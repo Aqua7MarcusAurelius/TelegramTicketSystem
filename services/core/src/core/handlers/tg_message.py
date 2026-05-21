@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from core.config import Settings
 from core.repository.customers import CustomersRepository
+from core.repository.executors import ExecutorsRepository
 from core.repository.fsm import FsmStateRepository
 from core.repository.processed_events import ProcessedEventsRepository
 from core.repository.ticket_events import TicketEventsRepository
@@ -55,6 +56,27 @@ def register(
 ) -> None:
     @broker.subscriber(stream=TG_MESSAGE, group="core")
     async def on_tg_message(event: TgMessage) -> None:
+        # Ветка 0: сообщение в командной группе от исполнителя — резолвим user_id
+        # (SPEC §3.4). Без commit'а будет работать lazy-резолвинг при первом сообщении.
+        if (
+            settings.executor_group_chat_id is not None
+            and event.chat_id == settings.executor_group_chat_id
+            and event.username
+            and not event.is_bot
+            and not event.is_service_message
+        ):
+            async with session_factory() as session:
+                repo = ExecutorsRepository(session)
+                if await repo.resolve_user_id(event.username, event.user_id):
+                    await session.commit()
+                    log.info(
+                        "executor_user_id_resolved",
+                        username=event.username,
+                        user_id=event.user_id,
+                    )
+            # резолвинг — побочка, дальше по обычным веткам не пускаем
+            return
+
         # Ветка 1: системное сообщение от бота (forum_topic_closed и т.п.)
         if (
             event.is_service_message

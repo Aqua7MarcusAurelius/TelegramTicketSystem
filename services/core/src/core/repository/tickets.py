@@ -53,6 +53,10 @@ class TicketsRepository:
         stmt = select(Ticket).where(Ticket.create_correlation_id == correlation_id)
         return (await self._session.execute(stmt)).scalar_one_or_none()
 
+    async def get_by_inbox_correlation(self, correlation_id: UUID) -> Ticket | None:
+        stmt = select(Ticket).where(Ticket.inbox_correlation_id == correlation_id)
+        return (await self._session.execute(stmt)).scalar_one_or_none()
+
     async def set_topic(self, ticket_id: int, topic_id: int) -> None:
         ticket = await self._session.get(Ticket, ticket_id)
         if ticket is not None:
@@ -62,6 +66,16 @@ class TicketsRepository:
         ticket = await self._session.get(Ticket, ticket_id)
         if ticket is not None:
             ticket.header_message_id = header_message_id
+
+    async def set_inbox_correlation(self, ticket_id: int, correlation_id: UUID) -> None:
+        ticket = await self._session.get(Ticket, ticket_id)
+        if ticket is not None:
+            ticket.inbox_correlation_id = correlation_id
+
+    async def set_inbox_message(self, ticket_id: int, inbox_message_id: int) -> None:
+        ticket = await self._session.get(Ticket, ticket_id)
+        if ticket is not None:
+            ticket.inbox_message_id = inbox_message_id
 
     async def list_active_by_user(
         self,

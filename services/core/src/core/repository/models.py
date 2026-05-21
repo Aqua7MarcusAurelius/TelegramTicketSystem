@@ -102,6 +102,11 @@ class Ticket(Base):
     create_correlation_id: Mapped[Any] = mapped_column(
         UUID(as_uuid=True), unique=True, nullable=True
     )
+    # Аналогично для карточки во `🆕 Входящие` командной группы. Spec 003.
+    inbox_correlation_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), unique=True, nullable=True
+    )
+    inbox_message_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     title: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[TicketStatus] = mapped_column(
