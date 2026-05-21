@@ -1,0 +1,1 @@
+"""FastStream-подписчики sheets-sync."""

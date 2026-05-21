@@ -16,8 +16,22 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# TODO: импортировать metadata для sheets_sync_state и sheets_sync_processed_events.
-target_metadata = None
+from sheets_sync.repository import models  # noqa: E402, F401
+from sheets_sync.repository.base import Base  # noqa: E402
+
+target_metadata = Base.metadata
+
+# Свои таблицы — фильтр для autogenerate/check, чтобы не дергать чужие таблицы
+# core/notifications, которые живут в той же БД.
+_OWN_TABLES = {"sheets_sync_state", "sheets_sync_processed_events"}
+
+
+def _include_object(obj, name, type_, reflected, compare_to):
+    if type_ == "table":
+        return name in _OWN_TABLES
+    if type_ == "index" and obj is not None and obj.table is not None:
+        return obj.table.name in _OWN_TABLES
+    return True
 
 
 def _get_url() -> str:
@@ -34,13 +48,21 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         compare_type=True,
+        version_table="alembic_version_sheets_sync",
+        include_object=_include_object,
     )
     with context.begin_transaction():
         context.run_migrations()
 
 
 def do_run_migrations(connection: Connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata, compare_type=True)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        compare_type=True,
+        version_table="alembic_version_sheets_sync",
+        include_object=_include_object,
+    )
     with context.begin_transaction():
         context.run_migrations()
 

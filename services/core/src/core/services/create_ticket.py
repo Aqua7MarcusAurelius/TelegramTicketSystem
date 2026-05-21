@@ -282,6 +282,7 @@ class HandleHeaderMessageSent:
                     ticket_id=ticket.id,
                     customer_id=customer.id,
                     customer_chat_id=customer.telegram_chat_id,
+                    customer_title=customer.title,
                     topic_id=ticket.topic_id,
                     title=ticket.title,
                     description=ticket.description,

@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from core.config import Settings
 from core.handlers import (
+    daily_digest,
     tg_bot_membership_changed,
     tg_callback,
     tg_message,
@@ -131,6 +132,7 @@ async def run() -> None:
     tg_bot_membership_changed.register(broker, session_factory)
     ticket_created.register(broker, session_factory, settings)
     ticket_assigned.register(broker, session_factory, settings)
+    daily_digest.register(broker, session_factory, settings)
 
     app = FastStream(broker)
     expire_task = asyncio.create_task(_expire_loop(session_factory, broker), name="expire-loop")

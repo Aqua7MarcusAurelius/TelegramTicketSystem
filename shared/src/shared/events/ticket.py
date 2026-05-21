@@ -16,6 +16,12 @@ class TicketCreated(Event):
     ticket_id: int
     customer_id: int
     customer_chat_id: int
+    customer_title: str = ""
+    """Имя заказчика для denormalized-потребителей (sheets-sync, digest).
+
+    Default ``""`` для совместимости с тестами/событиями, опубликованными
+    предыдущими версиями core (event_version: 1).
+    """
     topic_id: int
     title: str
     description: str
@@ -32,6 +38,8 @@ class TicketAssigned(Event):
 
     ticket_id: int
     assignee_user_id: int
+    assignee_full_name: str = ""
+    """Имя исполнителя для denormalized-потребителей (sheets-sync, digest)."""
     assigned_by_user_id: int
     assigned_at: datetime
 

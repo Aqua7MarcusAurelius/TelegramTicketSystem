@@ -26,6 +26,8 @@ CORE_TABLES = (
     "core_processed_events",
     "executors",
     "customers",
+    "sheets_sync_state",
+    "sheets_sync_processed_events",
 )
 
 

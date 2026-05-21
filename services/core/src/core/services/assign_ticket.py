@@ -193,6 +193,7 @@ class AssignTicket:
                 TicketAssigned(
                     ticket_id=ticket.id,
                     assignee_user_id=target.telegram_user_id,
+                    assignee_full_name=target.full_name,
                     assigned_by_user_id=actor.telegram_user_id,
                     assigned_at=now,
                 ),
