@@ -126,27 +126,25 @@ executors:
 4. Приглашает исполнителей и делает их **анонимными админами**: `Manage group → Administrators → Add → toggle "Hide identity"`
 5. Добавляет **бота** как админа с правами: `Manage Topics`, `Delete Messages`, `Pin Messages`
 
-#### Автоматическая регистрация
+#### Регистрация по явной команде `/setup`
 
-Когда бот получает админские права в новой группе, Telegram присылает ему `my_chat_member`. `gateway-tg` публикует на шину `events.tg.bot_membership_changed`. `core` обрабатывает:
+> **Update (smoke / v1).** Авто-онбординг при `my_chat_member` убран сознательно. По одному `my_chat_member` бот не может различить, какая это группа — заказчика или командная (для обеих профиль одинаковый: форум-режим + бот-админ). Поэтому при получении `events.tg.bot_membership_changed` с `new_status == 'administrator'` бот шлёт в чат единое сообщение-подсказку: «Я добавлен. Используйте `/setup` для группы заказчика, `/setup_team_group` для командной группы». Реальный onboarding запускается **только** явной командой исполнителя. Подробности — в [specs/005-onboard-customer.md](../specs/005-onboard-customer.md).
 
-1. **Проверка типа чата**: `chat_type == 'supergroup'` AND `is_forum == true`
+Когда исполнитель пишет в General группы `/setup`, `core` обрабатывает (вся логика — в `OnboardCustomer.from_setup_command`):
+
+1. **Проверка отправителя**: `from_user.id` ∈ active `executors`. Иначе молча игнорируется (§3.7).
+2. **Проверка типа чата**: `chat_type == 'supergroup'` AND `is_forum == true`
    - Если нет — бот пишет в General: «Эта группа не в режиме форума. Включите форум-режим в настройках, затем нажмите /setup»
-2. **Проверка прав бота**: все нужные галочки выставлены
-   - Если чего-то не хватает — пишет конкретный чек-лист: «Не хватает: Manage Topics, Delete Messages. Дайте права и нажмите кнопку ниже» с кнопкой `🔄 Проверить ещё раз`
-3. **Проверка дублей**: если `customers.telegram_chat_id` уже есть — выводит «Группа уже зарегистрирована за заказчиком '<имя>'» и выходит
-4. **Если всё ок** — onboarding:
+3. **Проверка прав бота**: все нужные галочки выставлены (`Manage Topics`, `Delete Messages`, `Pin Messages`)
+   - Если чего-то не хватает — пишет чек-лист с кнопкой `🔄 Проверить ещё раз` (known limit: кнопка пока не делает self-recheck, бот предлагает обновить права и `/setup` ещё раз)
+4. **Проверка дублей**: если `customers.telegram_chat_id` уже есть и `menu_message_id` заполнен — выводит «Уже подключено как '<title>'» и выходит
+5. **Если всё ок** — onboarding:
    - INSERT в `customers` (`title = chat.title`, `is_active = true`)
    - `cmd.tg.edit_general_forum_topic` → переименовать General в `📋 Меню`
    - `cmd.tg.send_message` в General — отправить главное меню (см. §7.1)
    - `cmd.tg.pin_message` — запинить это сообщение, записать `message_id` в `customers.menu_message_id`
    - `cmd.tg.close_general_forum_topic`
    - Чистка системных сообщений от своих действий (`forum_topic_closed`, и т.п.)
-   - Финальное `cmd.tg.answer_callback_query` или toast «✅ Группа подключена, заказчик может создавать тикеты»
-
-#### Ручной запуск (`/setup`)
-
-Если автозапуск не сработал (например, бот был добавлен в группу до старта сервиса — `my_chat_member` улетел в пустоту), любой админ группы пишет в General `/setup`. Бот выполняет ровно ту же логику что и при автозапуске.
 
 #### Если бота выгнали из группы
 

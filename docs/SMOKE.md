@@ -86,16 +86,25 @@ docker compose logs -f core gateway-tg
 - Бот создаёт 4 топика: `🆕 Входящие`, `🚨 Эскалации`, `📊 Сводка`, `🤖 Логи`
 - В чат прилетает блок env-переменных
 
-**Действие**: скопировать блок в `.env`, `docker compose restart core gateway-tg sheets-sync scheduler`.
+**Действие**: скопировать блок в `.env`, `docker compose up -d --force-recreate core gateway-tg sheets-sync scheduler notifications`.
 
-### Шаг 2 — Добавить бота в группу заказчика
+> ⚠️ `docker compose restart` **не** перечитывает `.env`. Только `up -d --force-recreate` (или `down` + `up`) перечитает env-файл.
 
-После рестарта бот уже в группе заказчика (был добавлен на этапе подготовки). Telegram отправит `my_chat_member` при следующем апдейте прав. Если не сработало — Иван пишет `/setup` в General группы заказчика.
+### Шаг 2 — Подключить группу заказчика через `/setup`
+
+После добавления бота админом в группу заказчика Telegram пришлёт `my_chat_member`. Бот ответит **подсказкой**: «Я добавлен. Используйте `/setup` для группы заказчика, `/setup_team_group` для командной». Реальный onboarding запускается явной командой.
+
+> ⚠️ **Important**: в `Manage group → Administrators → бот` обязательно включить toggle **`Manage topics`** (отдельный, обычно выключен по умолчанию). Без него `createForumTopic` упадёт с `Bad Request: not enough rights to create a topic`, и тикет создать не получится. `Delete Messages` и `Pin Messages` тоже нужны.
+
+Исполнитель пишет в General группы заказчика **`/setup`**.
 
 **Ожидаемо**:
 - General переименован в `📋 Меню`
 - В General запинено сообщение бота с 3 кнопками: `🆕 Новый тикет`, `📋 Мои тикеты`, `❓ Помощь`
 - General закрыт (писать в нём могут только админы)
+- В БД появилась запись в `customers` с заполненным `menu_message_id`
+
+> 💡 Чтобы бот считал тебя исполнителем, нужно чтобы твой `telegram_user_id` был зарезолвлен в таблице `executors`. Резолв происходит автоматически при первом сообщении исполнителя в **командной группе** (которая указана в `EXECUTOR_GROUP_CHAT_ID`). Если командной группы ещё нет — можно прописать вручную: `UPDATE executors SET telegram_user_id = <id> WHERE username = '<username>';` Узнать свой numeric ID — через `@userinfobot`.
 
 ### Шаг 3 — Создать тикет (от заказчика)
 
