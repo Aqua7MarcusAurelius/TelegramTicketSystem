@@ -10,9 +10,7 @@ from typing import Any, Literal
 from shared.events.base import Event
 
 ChatType = Literal["private", "group", "supergroup", "channel"]
-MembershipStatus = Literal[
-    "creator", "administrator", "member", "restricted", "left", "kicked"
-]
+MembershipStatus = Literal["creator", "administrator", "member", "restricted", "left", "kicked"]
 ParseMode = Literal["HTML", "MarkdownV2"]
 
 

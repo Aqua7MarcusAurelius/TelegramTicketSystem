@@ -24,9 +24,7 @@ class Settings(BaseSettings):
     executor_group_topic_digest: int | None = Field(
         default=None, alias="EXECUTOR_GROUP_TOPIC_DIGEST"
     )
-    executor_group_topic_logs: int | None = Field(
-        default=None, alias="EXECUTOR_GROUP_TOPIC_LOGS"
-    )
+    executor_group_topic_logs: int | None = Field(default=None, alias="EXECUTOR_GROUP_TOPIC_LOGS")
 
     # Иконки топиков (custom_emoji_id) — см. SPEC §6
     topic_icon_new: str | None = Field(default=None, alias="TOPIC_ICON_NEW")

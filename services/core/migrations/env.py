@@ -25,8 +25,11 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# TODO(spec 001): импортировать Base из core.repository.models и присвоить metadata.
-target_metadata = None
+# Подключаем все доменные модели core'а — это включает их в Base.metadata.
+from core.repository import models  # noqa: E402, F401
+from core.repository.base import Base  # noqa: E402
+
+target_metadata = Base.metadata
 
 
 def _get_url() -> str:

@@ -23,9 +23,7 @@ class Settings(BaseSettings):
     executor_group_topic_digest: int | None = Field(
         default=None, alias="EXECUTOR_GROUP_TOPIC_DIGEST"
     )
-    executor_group_topic_logs: int | None = Field(
-        default=None, alias="EXECUTOR_GROUP_TOPIC_LOGS"
-    )
+    executor_group_topic_logs: int | None = Field(default=None, alias="EXECUTOR_GROUP_TOPIC_LOGS")
 
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     log_format: str = Field(default="console", alias="LOG_FORMAT")

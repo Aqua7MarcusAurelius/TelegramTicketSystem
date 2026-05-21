@@ -1765,6 +1765,14 @@ wheels = [
 name = "ticket-bot"
 version = "0.1.0"
 source = { virtual = "." }
+dependencies = [
+    { name = "core" },
+    { name = "gateway-tg" },
+    { name = "notifications" },
+    { name = "scheduler" },
+    { name = "shared" },
+    { name = "sheets-sync" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -1777,6 +1785,14 @@ dev = [
 ]
 
 [package.metadata]
+requires-dist = [
+    { name = "core", editable = "services/core" },
+    { name = "gateway-tg", editable = "services/gateway-tg" },
+    { name = "notifications", editable = "services/notifications" },
+    { name = "scheduler", editable = "services/scheduler" },
+    { name = "shared", editable = "shared" },
+    { name = "sheets-sync", editable = "services/sheets-sync" },
+]
 
 [package.metadata.requires-dev]
 dev = [

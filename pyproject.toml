@@ -3,6 +3,26 @@ name = "ticket-bot"
 version = "0.1.0"
 description = "Internal ticket bot for Telegram (forum groups + Redis Streams)"
 requires-python = ">=3.12"
+# В dev-окружении хотим все workspace-пакеты установленными, чтобы тесты
+# импортировали core/notifications/... как обычные пакеты. uv sync без флагов
+# подтягивает только корневой проект — поэтому корневой проект явно зависит
+# от всех members.
+dependencies = [
+    "shared",
+    "gateway-tg",
+    "core",
+    "notifications",
+    "scheduler",
+    "sheets-sync",
+]
+
+[tool.uv.sources]
+shared = { workspace = true }
+"gateway-tg" = { workspace = true }
+core = { workspace = true }
+notifications = { workspace = true }
+scheduler = { workspace = true }
+"sheets-sync" = { workspace = true }
 
 [tool.uv.workspace]
 members = ["shared", "services/*"]
@@ -36,7 +56,10 @@ select = [
     "ASYNC",
 ]
 ignore = [
-    "B008",  # FastAPI/aiogram Depends-style defaults
+    "B008",     # FastAPI/aiogram Depends-style defaults
+    "RUF001",   # ambiguous unicode chars — false positives in russian text
+    "RUF002",   # ambiguous chars in docstring — same
+    "RUF003",   # ambiguous chars in comment — same
 ]
 
 [tool.ruff.lint.per-file-ignores]
@@ -54,5 +77,9 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+# Один event loop на сессию — это нужно для session-scoped async-фикстур
+# (engine в integration-тестах) на Windows ProactorEventLoop.
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 testpaths = ["tests"]
 addopts = "-ra --strict-markers"

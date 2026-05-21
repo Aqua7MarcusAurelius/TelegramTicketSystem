@@ -31,18 +31,6 @@ from shared.events.tg import (
 from shared.events.ticket import TicketAssigned, TicketClosed, TicketCreated
 
 __all__ = [
-    # Base
-    "Event",
-    # Domain (events.ticket.*)
-    "TicketAssigned",
-    "TicketClosed",
-    "TicketCreated",
-    # Telegram inbound (events.tg.*)
-    "TgBotMembershipChanged",
-    "TgCallback",
-    "TgError",
-    "TgMessage",
-    "TgTopicCreated",
     # Telegram commands (cmd.tg.*)
     "CmdAnswerCallbackQuery",
     "CmdCloseForumTopic",
@@ -58,4 +46,16 @@ __all__ = [
     "CmdSendMessage",
     # Schedule
     "DailyDigestTick",
+    # Base
+    "Event",
+    # Telegram inbound (events.tg.*)
+    "TgBotMembershipChanged",
+    "TgCallback",
+    "TgError",
+    "TgMessage",
+    "TgTopicCreated",
+    # Domain (events.ticket.*)
+    "TicketAssigned",
+    "TicketClosed",
+    "TicketCreated",
 ]
