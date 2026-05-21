@@ -125,3 +125,28 @@ def header_keyboard(ticket_id: int) -> dict[str, list[list[dict[str, str]]]]:
     return {
         "inline_keyboard": [[{"text": "✅ Закрыть тикет", "callback_data": f"close:{ticket_id}"}]]
     }
+
+
+def confirm_close_keyboard(ticket_id: int) -> dict[str, list[list[dict[str, str]]]]:
+    """Inline-клавиатура подтверждения закрытия (spec 004)."""
+
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "Да, закрыть", "callback_data": f"close_confirm:{ticket_id}"},
+                {"text": "Отмена", "callback_data": f"close_cancel:{ticket_id}"},
+            ]
+        ]
+    }
+
+
+def closed_header_keyboard() -> dict[str, list[list[dict[str, str]]]]:
+    """Финальная клавиатура шапки закрытого тикета — без активных кнопок (spec 004)."""
+
+    return {"inline_keyboard": []}
+
+
+def render_confirm_close_text(base_header_text: str) -> str:
+    """Дополнить текст шапки промптом подтверждения. SPEC §7.4."""
+
+    return base_header_text + "\n\n❓ Закрыть тикет?"

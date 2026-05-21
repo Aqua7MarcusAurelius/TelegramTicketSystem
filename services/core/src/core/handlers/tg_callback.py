@@ -26,10 +26,19 @@ from core.services.assign_ticket import (
     AssignResult,
     AssignTicket,
 )
+from core.services.close_ticket import (
+    CLOSE_CANCEL_PREFIX,
+    CLOSE_CONFIRM_PREFIX,
+    CLOSE_PREFIX,
+    CloseResult,
+    CloseTicket,
+)
 from core.services.handle_menu_callback import (
     HandleMenuCallback,
     MenuCallbackResult,
 )
+
+CLOSE_PREFIXES = frozenset({CLOSE_PREFIX, CLOSE_CONFIRM_PREFIX, CLOSE_CANCEL_PREFIX})
 
 log = structlog.get_logger(__name__)
 
@@ -45,6 +54,10 @@ def register(
 
         if prefix == ASSIGN_PREFIX:
             await _handle_assign(event, session_factory, broker, settings)
+            return
+
+        if prefix in CLOSE_PREFIXES:
+            await _handle_close(event, session_factory, broker, settings)
             return
 
         await _handle_menu(event, session_factory, broker)
@@ -103,3 +116,32 @@ async def _handle_assign(
 
     await broker.publish(result.answer, stream=stream_for(result.answer))
     log.debug("assign_skipped", reason=result.reason, event_id=event.event_id)
+
+
+async def _handle_close(
+    event: TgCallback,
+    session_factory: async_sessionmaker,
+    broker: RedisBroker,
+    settings: Settings,
+) -> None:
+    async with session_factory() as session:
+        use_case = CloseTicket(
+            session=session,
+            tickets=TicketsRepository(session),
+            ticket_events=TicketEventsRepository(session),
+            processed=ProcessedEventsRepository(session),
+            topic_icon_closed=settings.topic_icon_closed,
+        )
+        result = await use_case.execute(event)
+        await session.commit()
+
+    if isinstance(result, CloseResult):
+        for cmd in result.commands:
+            await broker.publish(cmd, stream=stream_for(cmd))
+        for ev in result.events:
+            await broker.publish(ev, stream=stream_for(ev))
+        await broker.publish(result.answer, stream=stream_for(result.answer))
+        return
+
+    await broker.publish(result.answer, stream=stream_for(result.answer))
+    log.debug("close_skipped", reason=result.reason, event_id=event.event_id)

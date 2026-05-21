@@ -1,6 +1,6 @@
 # 004. Close ticket
 
-**Status:** draft
+**Status:** in-review (use-case + handler + integration-тесты ✅; ждёт gateway-tg для e2e)
 **Author:** team
 **Created:** 2026-05-21
 
@@ -33,18 +33,25 @@
 
 ## Acceptance criteria
 
-- [ ] Кнопка «Закрыть тикет» на шапке нажата кем-то, кроме `created_by_user_id` → toast «Закрыть может только заказчик», без изменений в БД, без редактирования шапки.
-- [ ] Заказчик жмёт «Закрыть» → шапка редактируется на «Уверены? [Да, закрыть] [Отмена]».
-- [ ] «Отмена» → шапка возвращается в нормальный вид.
-- [ ] «Да, закрыть» → `tickets.status=closed`, `closed_at` и `closed_by_user_id` заполнены атомарно.
-- [ ] Имя топика меняется на `[✅] #{id} {title}`.
-- [ ] Иконка топика → `TOPIC_ICON_CLOSED`.
-- [ ] Шапка обновляется в финальное состояние (без активных кнопок).
-- [ ] В топик отправляется финальное сообщение «Тикет закрыт. Спасибо!».
-- [ ] Топик закрывается через `closeForumTopic` (писать нельзя).
-- [ ] Публикуется `events.ticket.closed`.
-- [ ] sheets-sync обновляет строку (status, closed_at).
-- [ ] Idempotency: повторный callback `close_confirm` с тем же `event_id` не приводит к повторному закрытию (тикет уже `closed` → toast «Тикет уже закрыт»).
+- [x] Кнопка «Закрыть тикет» нажата кем-то, кроме `created_by_user_id` → toast «Закрыть может только заказчик», без изменений в БД, без редактирования шапки. *(test_non_customer_cannot_initiate / test_non_customer_cannot_confirm)*
+- [x] Заказчик жмёт «Закрыть» → шапка редактируется на «❓ Закрыть тикет? [Да, закрыть] [Отмена]». *(test_close_button_shows_confirm_dialog)*
+- [x] «Отмена» → шапка возвращается в нормальный вид. *(test_cancel_restores_normal_header)*
+- [x] «Да, закрыть» → `tickets.status=closed`, `closed_at` и `closed_by_user_id` заполнены атомарно. *(test_full_close_flow)*
+- [x] Имя топика меняется на `[✅] #{id} {title}`. *(`format_topic_name(..., closed=True)`)*
+- [x] Иконка топика → `TOPIC_ICON_CLOSED`. *(CmdEditForumTopic с icon_custom_emoji_id из settings.topic_icon_closed)*
+- [x] Шапка обновляется в финальное состояние (без активных кнопок). *(`closed_header_keyboard()` → `{"inline_keyboard": []}`)*
+- [x] В топик отправляется финальное сообщение «✅ Тикет закрыт. Спасибо!». *(CmdSendMessage)*
+- [x] Топик закрывается через `closeForumTopic` (писать нельзя). *(CmdCloseForumTopic — последняя команда в результате, чтобы предыдущие правки успели уйти)*
+- [x] Публикуется `events.ticket.closed`. *(TicketClosed с ticket_id, closed_by_user_id, closed_at)*
+- [ ] sheets-sync обновляет строку (status, closed_at). **Не покрыто этой спекой — sheets-sync ещё не реализован.**
+- [x] Idempotency: повторный callback `close_confirm` с тем же `event_id` не приводит к повторному закрытию. *(test_idempotency, test_already_closed)*
+
+**Артефакты текущего шага:**
+- [`close_ticket.py`](../services/core/src/core/services/close_ticket.py) — use-case с 3 ветками (close / close_cancel / close_confirm); проверка `from_user.id == created_by_user_id` обязательна на каждой ветке (повторный confirm от чужака отбракуется тоже)
+- domain-хелперы в [`domain/ticket.py`](../services/core/src/core/domain/ticket.py): `confirm_close_keyboard`, `closed_header_keyboard`, `render_confirm_close_text`, `format_topic_name(..., closed=True)`
+- multiplexer в [`tg_callback handler`](../services/core/src/core/handlers/tg_callback.py) теперь знает `close:`, `close_confirm:`, `close_cancel:`
+- 17 новых integration-тестов: парсинг, permission denial, confirm-dialog, cancel-restore, full close + events + DB, idempotency, already_closed, close-из-new (без in_progress)
+- Full suite: 96 passing, ruff clean, schema matches models
 
 ## Data changes
 
