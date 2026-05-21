@@ -13,12 +13,12 @@
 #     с is_active=false для целостности FK на старых тикетах.
 
 executors:
-  - username: ivan_petrov
-    full_name: Иван Петров
+  - username: it_aqua7
+    full_name: AQUA7
     is_lead: true
 
-  - username: maria_s
-    full_name: Мария Сидорова
+  - username: wewewe111q
+    full_name: DarWin
 
-  - username: petr_k
-    full_name: Пётр Кузнецов
+  - username: chipolino0070
+    full_name: Chipolino

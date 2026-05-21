@@ -66,3 +66,22 @@ def success_toast_text(title: str) -> str:
 
 def setup_recheck_callback_data() -> str:
     return "setup_recheck"
+
+
+def added_to_group_hint_text() -> str:
+    """Отправляется при первом ``my_chat_member`` с new_status=administrator.
+
+    Авто-onboarding отключён сознательно: бот не знает, customer или team —
+    выбирает пользователь явной командой (см. spec 005 update).
+    """
+
+    return (
+        "👋 Я добавлен админом. Чтобы настроить эту группу, выберите её тип:\n"
+        "\n"
+        "• Группа заказчика → отправьте <code>/setup</code> "
+        "(только от исполнителя из <code>executors.yaml</code>)\n"
+        "• Командная группа исполнителей → "
+        "<code>/setup_team_group</code>\n"
+        "\n"
+        "Я ничего не трогаю в этой группе, пока вы не выберете."
+    )

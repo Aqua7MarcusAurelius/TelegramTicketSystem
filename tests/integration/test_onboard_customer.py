@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
-from core.domain.onboarding import GENERAL_MENU_NAME, MissingRights
+from core.domain.onboarding import MissingRights
 from core.repository.customers import CustomersRepository
 from core.repository.models import Customer
 from core.repository.processed_events import ProcessedEventsRepository
@@ -65,35 +65,25 @@ def use_case(session: AsyncSession) -> OnboardCustomer:
 
 
 class TestFromMembershipEvent:
-    async def test_happy_path(self, session: AsyncSession, use_case: OnboardCustomer) -> None:
+    """Авто-onboarding убран (см. update spec 005). При новом администраторском
+    statuse'е бот шлёт только подсказку с инструкцией — реальный onboarding
+    запускает явная команда (`/setup` или `/setup_team_group`)."""
+
+    async def test_admin_sends_hint(
+        self, session: AsyncSession, use_case: OnboardCustomer
+    ) -> None:
         result = await use_case.from_membership_event(_membership_event())
         await session.commit()
 
         assert isinstance(result, OnboardResult)
-        assert result.customer_created is True
-
-        types = [type(c) for c in result.commands]
-        assert types == [
-            CmdEditGeneralForumTopic,
-            CmdSendMessage,
-            CmdCloseGeneralForumTopic,
-        ]
-        rename = result.commands[0]
-        assert isinstance(rename, CmdEditGeneralForumTopic)
-        assert rename.name == GENERAL_MENU_NAME
-
-        send = result.commands[1]
-        assert isinstance(send, CmdSendMessage)
-        assert send.correlation_id is not None  # связь с phase 2
-
-        # Customer создан с menu_correlation_id и без menu_message_id
-        customers_repo = CustomersRepository(session)
-        c = await customers_repo.get_by_chat(GROUP_CHAT_ID)
-        assert c is not None
-        assert c.title == GROUP_TITLE
-        assert c.menu_correlation_id == send.correlation_id
-        assert c.menu_message_id is None
-        assert c.onboarded_at is not None
+        assert result.customer_created is False
+        assert len(result.commands) == 1
+        msg = result.commands[0]
+        assert isinstance(msg, CmdSendMessage)
+        assert "/setup" in msg.text
+        assert "/setup_team_group" in msg.text
+        # Customer НЕ зарегистрирован — бот не знает, какая это группа
+        assert await CustomersRepository(session).get_by_chat(GROUP_CHAT_ID) is None
 
     async def test_not_administrator_skipped(
         self, session: AsyncSession, use_case: OnboardCustomer
@@ -102,89 +92,27 @@ class TestFromMembershipEvent:
         assert isinstance(result, OnboardSkipped)
         assert result.reason == "not_administrator"
 
-    async def test_not_forum_sends_instruction(
+    async def test_already_onboarded_no_hint(
         self, session: AsyncSession, use_case: OnboardCustomer
     ) -> None:
-        result = await use_case.from_membership_event(_membership_event(is_forum=False))
-        await session.commit()
-        assert isinstance(result, OnboardResult)
-        assert result.customer_created is False
-        assert len(result.commands) == 1
-        msg = result.commands[0]
-        assert isinstance(msg, CmdSendMessage)
-        assert "форума" in msg.text  # упомянут режим форума
-        # Customer НЕ создан
-        c = await CustomersRepository(session).get_by_chat(GROUP_CHAT_ID)
-        assert c is None
+        """Группа уже зарегистрирована и menu_message_id заполнен —
+        повторное событие (например, обновили права бота) не должно
+        слать подсказку, иначе пользователь будет получать спам."""
 
-    async def test_missing_rights_emits_checklist_with_button(
-        self, session: AsyncSession, use_case: OnboardCustomer
-    ) -> None:
-        result = await use_case.from_membership_event(
-            _membership_event(can_pin_messages=False, can_delete_messages=False)
+        session.add(
+            Customer(
+                telegram_chat_id=GROUP_CHAT_ID,
+                title="Already",
+                menu_message_id=99,
+                onboarded_at=datetime.now(UTC),
+            )
         )
-        await session.commit()
-        assert isinstance(result, OnboardResult)
-        assert len(result.commands) == 1
-        msg = result.commands[0]
-        assert isinstance(msg, CmdSendMessage)
-        assert "Pin Messages" in msg.text
-        assert "Delete Messages" in msg.text
-        kb = msg.reply_markup["inline_keyboard"]  # type: ignore[index]
-        # одна кнопка с callback_data setup_recheck
-        assert kb[0][0]["callback_data"] == "setup_recheck"
-        # Customer НЕ создан
-        assert await CustomersRepository(session).get_by_chat(GROUP_CHAT_ID) is None
-
-    async def test_already_registered_says_already_connected(
-        self, session: AsyncSession, use_case: OnboardCustomer
-    ) -> None:
-        existing = Customer(
-            telegram_chat_id=GROUP_CHAT_ID,
-            title="Уже было",
-            menu_message_id=99,  # уже завершённый onboarding
-            onboarded_at=datetime.now(UTC),
-        )
-        session.add(existing)
         await session.commit()
 
         result = await use_case.from_membership_event(_membership_event())
         await session.commit()
-        assert isinstance(result, OnboardResult)
-        assert result.customer_created is False
-        assert len(result.commands) == 1
-        msg = result.commands[0]
-        assert isinstance(msg, CmdSendMessage)
-        assert "Уже было" in msg.text
-
-    async def test_existing_without_menu_message_id_re_onboards(
-        self, session: AsyncSession, use_case: OnboardCustomer
-    ) -> None:
-        """Если customer был создан, но menu_message_id NULL (retry, рестарт) —
-        повторный onboarding допустим, чтобы добить отправку меню."""
-
-        existing = Customer(
-            telegram_chat_id=GROUP_CHAT_ID,
-            title=GROUP_TITLE,
-            menu_message_id=None,
-            onboarded_at=datetime.now(UTC),
-        )
-        session.add(existing)
-        await session.commit()
-
-        result = await use_case.from_membership_event(_membership_event())
-        await session.commit()
-        assert isinstance(result, OnboardResult)
-        assert result.customer_created is False  # уже была запись
-        # Но команды отправлены — повторно отправляем меню
-        types = [type(c) for c in result.commands]
-        assert CmdEditGeneralForumTopic in types
-        assert CmdSendMessage in types
-        assert CmdCloseGeneralForumTopic in types
-        # menu_correlation_id обновлён
-        c = await CustomersRepository(session).get_by_chat(GROUP_CHAT_ID)
-        assert c is not None
-        assert c.menu_correlation_id is not None
+        assert isinstance(result, OnboardSkipped)
+        assert result.reason == "already_onboarded"
 
     async def test_idempotency(self, session: AsyncSession, use_case: OnboardCustomer) -> None:
         event = _membership_event()
@@ -225,13 +153,22 @@ class TestFromSetupCommand:
 
 class TestHandleMenuMessageSent:
     async def test_pins_menu_after_send(self, session: AsyncSession) -> None:
-        # Сначала — onboarding до отправки
+        # Сначала — onboarding до отправки (через явный /setup)
         use_case = OnboardCustomer(
             session=session,
             customers=CustomersRepository(session),
             processed=ProcessedEventsRepository(session),
         )
-        result = await use_case.from_membership_event(_membership_event())
+        result = await use_case.from_setup_command(
+            chat_id=GROUP_CHAT_ID,
+            chat_title=GROUP_TITLE,
+            is_forum=True,
+            rights=MissingRights(
+                can_manage_topics=True,
+                can_delete_messages=True,
+                can_pin_messages=True,
+            ),
+        )
         await session.commit()
         assert isinstance(result, OnboardResult)
         send = next(c for c in result.commands if isinstance(c, CmdSendMessage))

@@ -35,6 +35,7 @@ from core.domain.menu_render import render_main
 from core.domain.onboarding import (
     GENERAL_MENU_NAME,
     MissingRights,
+    added_to_group_hint_text,
     already_registered_text,
     missing_rights_keyboard,
     missing_rights_text,
@@ -73,21 +74,34 @@ class OnboardCustomer:
     async def from_membership_event(
         self, event: TgBotMembershipChanged
     ) -> OnboardResult | OnboardSkipped:
-        """Триггер №1: бот стал админом (или права обновили)."""
+        """Триггер №1: бот стал админом.
+
+        Авто-onboarding **отключён** (см. update spec 005): бот не различает
+        customer-группу от team-группы по факту добавления. Вместо регистрации
+        мы один раз отправляем подсказку, дальше пользователь выбирает явной
+        командой ``/setup`` (customer) или ``/setup_team_group`` (team).
+        """
 
         if event.new_status != "administrator":
             return OnboardSkipped(reason="not_administrator")
         if not await self.processed.try_mark(event.event_id):
             return OnboardSkipped(reason="already_processed")
-        return await self._run(
-            chat_id=event.chat_id,
-            chat_title=event.chat_title or "Безымянная группа",
-            is_forum=event.is_forum,
-            rights=MissingRights(
-                can_manage_topics=event.can_manage_topics,
-                can_delete_messages=event.can_delete_messages,
-                can_pin_messages=event.can_pin_messages,
+
+        # Если эта группа уже зарегистрирована как customer — повторно регистрация
+        # не нужна, но и сообщение тоже не шлём (это просто обновление прав бота).
+        existing = await self.customers.get_by_chat(event.chat_id)
+        if existing is not None and existing.menu_message_id is not None:
+            return OnboardSkipped(reason="already_onboarded")
+
+        return OnboardResult(
+            commands=(
+                CmdSendMessage(
+                    chat_id=event.chat_id,
+                    text=added_to_group_hint_text(),
+                    parse_mode="HTML",
+                ),
             ),
+            customer_created=False,
         )
 
     async def from_setup_command(
