@@ -22,6 +22,7 @@ CORE_TABLES = (
     "ticket_events",
     "tickets",
     "fsm_state",
+    "team_group_topic_setup",
     "core_processed_events",
     "executors",
     "customers",

@@ -23,6 +23,7 @@ from core.repository.customers import CustomersRepository
 from core.repository.executors import ExecutorsRepository
 from core.repository.fsm import FsmStateRepository
 from core.repository.processed_events import ProcessedEventsRepository
+from core.repository.team_group import TeamGroupSetupRepository
 from core.repository.ticket_events import TicketEventsRepository
 from core.repository.tickets import TicketsRepository
 from core.services.create_ticket import (
@@ -32,6 +33,11 @@ from core.services.create_ticket import (
 from core.services.onboard_customer import (
     OnboardCustomer,
     OnboardResult,
+)
+from core.services.setup_team_group import (
+    PrintTopicId,
+    SetupTeamGroup,
+    TeamGroupResult,
 )
 
 log = structlog.get_logger(__name__)
@@ -91,6 +97,26 @@ def register(
             and not event.is_bot
         ):
             await _handle_setup_command(event, session_factory, broker)
+            return
+
+        # Ветка 0.6: /setup_team_group (spec 006). От исполнителя — иначе молча игнор.
+        if (
+            event.text
+            and event.text.split()[0] == "/setup_team_group"
+            and not event.is_service_message
+            and not event.is_bot
+        ):
+            await _handle_setup_team_group(event, session_factory, broker, settings)
+            return
+
+        # Ветка 0.7: /print_topic_id — debug-утилита (spec 006). Только для исполнителей.
+        if (
+            event.text
+            and event.text.split()[0] == "/print_topic_id"
+            and not event.is_service_message
+            and not event.is_bot
+        ):
+            await _handle_print_topic_id(event, session_factory, broker)
             return
 
         # Ветка 1: системное сообщение от бота (forum_topic_closed и т.п.)
@@ -203,3 +229,59 @@ async def _handle_setup_command(
             await broker.publish(cmd, stream=stream_for(cmd))
     else:
         log.debug("setup_skipped", reason=result.reason, event_id=event.event_id)
+
+
+async def _handle_setup_team_group(
+    event: TgMessage,
+    session_factory: async_sessionmaker,
+    broker: RedisBroker,
+    settings: Settings,
+) -> None:
+    """Команда /setup_team_group — только от исполнителя (SPEC §3.7)."""
+
+    async with session_factory() as session:
+        processed = ProcessedEventsRepository(session)
+        # Проверка идемпотентности здесь — use-case делает свой try_mark поверх,
+        # вторая попытка просто вернёт already_processed.
+
+        execs = ExecutorsRepository(session)
+        actor = await execs.get_by_telegram_id(event.user_id)
+        if actor is None or not actor.is_active:
+            log.debug("setup_team_group_ignored_non_executor", user_id=event.user_id)
+            return
+
+        use_case = SetupTeamGroup(
+            repo=TeamGroupSetupRepository(session),
+            processed=processed,
+            configured_chat_id=settings.executor_group_chat_id,
+        )
+        result = await use_case.execute(event)
+        await session.commit()
+
+    if isinstance(result, TeamGroupResult):
+        for cmd in result.commands:
+            await broker.publish(cmd, stream=stream_for(cmd))
+    else:
+        log.debug("setup_team_group_skipped", reason=result.reason, event_id=event.event_id)
+
+
+async def _handle_print_topic_id(
+    event: TgMessage,
+    session_factory: async_sessionmaker,
+    broker: RedisBroker,
+) -> None:
+    """``/print_topic_id`` — только исполнителям (служебная команда, SPEC §3.7)."""
+
+    async with session_factory() as session:
+        execs = ExecutorsRepository(session)
+        actor = await execs.get_by_telegram_id(event.user_id)
+        if actor is None or not actor.is_active:
+            return
+
+        use_case = PrintTopicId(processed=ProcessedEventsRepository(session))
+        result = await use_case.execute(event)
+        await session.commit()
+
+    if isinstance(result, TeamGroupResult):
+        for cmd in result.commands:
+            await broker.publish(cmd, stream=stream_for(cmd))

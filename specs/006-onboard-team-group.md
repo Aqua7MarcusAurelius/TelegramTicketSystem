@@ -1,6 +1,6 @@
 # 006. Onboard team group (one-time)
 
-**Status:** draft
+**Status:** in-review (use-case + handlers + integration-тесты ✅; ждёт gateway-tg для e2e)
 **Author:** team
 **Created:** 2026-05-21
 
@@ -28,18 +28,26 @@
 
 ## Acceptance criteria
 
-- [ ] Команда `/setup_team_group` доступна только исполнителям из `executors.yaml`. От не-исполнителя — молча игнорируется.
-- [ ] Если `EXECUTOR_GROUP_CHAT_ID` уже задан и не совпадает с `chat_id` текущей группы — бот пишет отказ с пояснением, не создаёт топики.
-- [ ] Если совпадает или пуст — бот создаёт топики `🆕 Входящие`, `🚨 Эскалации`, `📊 Сводка`, `🤖 Логи` (Общее — дефолтный General, не трогаем).
-- [ ] В чат выводится готовый блок:
-  ```
-  EXECUTOR_GROUP_CHAT_ID=-1001234567890
-  EXECUTOR_GROUP_TOPIC_INCOMING=2
-  EXECUTOR_GROUP_TOPIC_DIGEST=3
-  EXECUTOR_GROUP_TOPIC_LOGS=4
-  ```
-- [ ] Команда `/print_topic_id` работает в любом топике и печатает `message_thread_id`.
-- [ ] На старте `core` валидирует все `EXECUTOR_GROUP_*` если они заданы: если что-то не сходится — ERROR в логи (`structlog`) + сервис продолжает работать (клиентские группы обслуживает).
+- [x] Команда `/setup_team_group` доступна только исполнителям из `executors.yaml`. От не-исполнителя — молча игнорируется. *(проверка `actor is None or not actor.is_active` в [tg_message handler](../services/core/src/core/handlers/tg_message.py) `_handle_setup_team_group`)*
+- [x] Если `EXECUTOR_GROUP_CHAT_ID` уже задан и не совпадает с `chat_id` текущей группы — бот пишет отказ с пояснением, не создаёт топики. *(test_chat_id_mismatch)*
+- [x] Если совпадает или пуст — бот создаёт топики `🆕 Входящие`, `🚨 Эскалации`, `📊 Сводка`, `🤖 Логи` (General не трогаем). *(test_happy_path_emits_4_creates)*
+- [x] В чат выводится готовый блок env-переменных. *(`TeamGroupEnvBlock.render()` + test_all_creates_emit_env_block)*
+- [x] Команда `/print_topic_id` работает в любом топике и печатает `message_thread_id`. *(test_returns_topic_id + test_in_general_returns_no_thread_id)*
+- [x] На старте `core` валидирует все `EXECUTOR_GROUP_*` если они заданы: если что-то не сходится — ERROR в логи + сервис продолжает работать. *([core/main.py](../services/core/src/core/main.py) — `executor_group_topic_env_missing` log; не падает)*
+
+**Артефакты текущего шага:**
+- Миграция [0005_team_group_topic_setup.py](../services/core/migrations/versions/20260521_0005_team_group_topic_setup.py) — таблица `team_group_topic_setup` (одна строка на топик с UNIQUE correlation_id и UNIQUE(chat_id, role))
+- Domain [team_group.py](../services/core/src/core/domain/team_group.py): `TeamTopicRole`, `TOPIC_NAMES`, `TeamGroupEnvBlock.render()`, тексты
+- Use-case'ы [setup_team_group.py](../services/core/src/core/services/setup_team_group.py): `SetupTeamGroup` (phase 1), `AttachTeamTopic` (phase 2 — собирает 4 ответа от gateway-tg и публикует env-блок когда все пришли), `PrintTopicId`
+- multiplexer в [tg_topic_created handler](../services/core/src/core/handlers/tg_topic_created.py) — теперь различает ticket и team-group setup по correlation_id
+- ветки `/setup_team_group` и `/print_topic_id` в [tg_message handler](../services/core/src/core/handlers/tg_message.py)
+- 10 новых integration-тестов, всего 116 passing
+
+## Architecture note
+
+Команда `/setup_team_group` идёт через те же два этапа, что и создание тикета (spec 002): сначала core эмитит 4× `cmd.tg.create_forum_topic` с UNIQUE correlation_id, далее ждёт 4 ответа `events.tg.topic_created`. Когда все 4 строки в `team_group_topic_setup` получили `topic_id`, бот публикует env-блок и помечает их `finished_at`. Заказчик копирует блок в `.env`, перезапускает стек.
+
+Эскалации (`🚨 Эскалации`) создаются как топик, но **не** попадают в env — в v1 они зарезервированы под будущую логику (SPEC §3.2), поэтому в env уезжают только три топика: incoming/digest/logs.
 
 ## Data changes
 

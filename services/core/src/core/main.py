@@ -101,6 +101,21 @@ async def run() -> None:
 
     if settings.executor_group_chat_id is None:
         log.error("EXECUTOR_GROUP_CHAT_ID is not set — team-group notifications will be skipped")
+    else:
+        # SPEC §3.6: проверяем что все TOPIC_* заданы; ERROR в логи, не падаем.
+        missing_topics: list[str] = []
+        if settings.executor_group_topic_incoming is None:
+            missing_topics.append("EXECUTOR_GROUP_TOPIC_INCOMING")
+        if settings.executor_group_topic_digest is None:
+            missing_topics.append("EXECUTOR_GROUP_TOPIC_DIGEST")
+        if settings.executor_group_topic_logs is None:
+            missing_topics.append("EXECUTOR_GROUP_TOPIC_LOGS")
+        if missing_topics:
+            log.error(
+                "executor_group_topic_env_missing",
+                missing=missing_topics,
+                hint="run /setup_team_group in the team chat to get the env block",
+            )
 
     engine = build_engine(settings.postgres_dsn)
     session_factory = build_session_factory(engine)

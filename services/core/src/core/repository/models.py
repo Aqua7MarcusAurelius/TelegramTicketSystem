@@ -178,3 +178,23 @@ class ProcessedEvent(Base):
     processed_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class TeamGroupTopicSetup(Base):
+    """In-flight setup командной группы. Spec 006."""
+
+    __tablename__ = "team_group_topic_setup"
+    __table_args__ = (
+        UniqueConstraint("chat_id", "role", name="uq_team_group_chat_role"),
+        Index("idx_team_group_chat", "chat_id"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    chat_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    correlation_id: Mapped[Any] = mapped_column(UUID(as_uuid=True), unique=True, nullable=False)
+    role: Mapped[str] = mapped_column(Text, nullable=False)
+    topic_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
