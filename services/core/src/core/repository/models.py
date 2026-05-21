@@ -48,6 +48,9 @@ class Customer(Base):
     title: Mapped[str] = mapped_column(Text, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     menu_message_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # UUID, который ставится в correlation_id команды отправки меню при онбординге
+    # (spec 005); приходит обратно в events.tg.message_sent → пишем menu_message_id.
+    menu_correlation_id: Mapped[Any] = mapped_column(UUID(as_uuid=True), unique=True, nullable=True)
     onboarded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

@@ -18,6 +18,7 @@ from shared.events.streams import TG_MESSAGE
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from core.config import Settings
+from core.domain.onboarding import MissingRights
 from core.repository.customers import CustomersRepository
 from core.repository.executors import ExecutorsRepository
 from core.repository.fsm import FsmStateRepository
@@ -27,6 +28,10 @@ from core.repository.tickets import TicketsRepository
 from core.services.create_ticket import (
     CreateTicketPhase1,
     TicketResult,
+)
+from core.services.onboard_customer import (
+    OnboardCustomer,
+    OnboardResult,
 )
 
 log = structlog.get_logger(__name__)
@@ -75,6 +80,17 @@ def register(
                         user_id=event.user_id,
                     )
             # резолвинг — побочка, дальше по обычным веткам не пускаем
+            return
+
+        # Ветка 0.5: команда /setup от исполнителя в группе заказчика — повторный
+        # запуск онбординга (SPEC §3.5, spec 005).
+        if (
+            event.text
+            and event.text.split()[0] == "/setup"
+            and not event.is_service_message
+            and not event.is_bot
+        ):
+            await _handle_setup_command(event, session_factory, broker)
             return
 
         # Ветка 1: системное сообщение от бота (forum_topic_closed и т.п.)
@@ -131,3 +147,59 @@ def register(
             )
             return
         log.debug("tg_message_skipped", reason=result.reason, event_id=event.event_id)
+
+
+async def _handle_setup_command(
+    event: TgMessage,
+    session_factory: async_sessionmaker,
+    broker: RedisBroker,
+) -> None:
+    """Команда /setup — от исполнителя в группе заказчика.
+
+    SPEC §3.7: «Команды от не-исполнителей молча игнорируются». Проверяем по
+    executors-таблице.
+
+    Известный лимит spec 005: чтобы корректно проверить текущие права бота,
+    нужен ``cmd.tg.get_chat_member`` — он не реализован, поэтому для /setup
+    мы предполагаем что права у бота уже есть (если их нет, ``createForumTopic`` /
+    ``sendMessage`` упадёт на стороне gateway-tg, лог пойдёт в `🤖 Логи`).
+    """
+
+    async with session_factory() as session:
+        # 1) Идемпотентность
+        processed = ProcessedEventsRepository(session)
+        if not await processed.try_mark(event.event_id):
+            await session.commit()
+            return
+
+        # 2) Только исполнитель
+        execs = ExecutorsRepository(session)
+        actor = await execs.get_by_telegram_id(event.user_id)
+        if actor is None or not actor.is_active:
+            await session.commit()
+            log.debug("setup_ignored_non_executor", user_id=event.user_id)
+            return
+
+        # 3) Запуск онбординга (предполагаем, что права в норме — см. docstring)
+        use_case = OnboardCustomer(
+            session=session,
+            customers=CustomersRepository(session),
+            processed=processed,
+        )
+        result = await use_case.from_setup_command(
+            chat_id=event.chat_id,
+            chat_title="Группа заказчика",  # реальное имя возьмём из cmd-результата позже
+            is_forum=event.is_forum,
+            rights=MissingRights(
+                can_manage_topics=True,
+                can_delete_messages=True,
+                can_pin_messages=True,
+            ),
+        )
+        await session.commit()
+
+    if isinstance(result, OnboardResult):
+        for cmd in result.commands:
+            await broker.publish(cmd, stream=stream_for(cmd))
+    else:
+        log.debug("setup_skipped", reason=result.reason, event_id=event.event_id)

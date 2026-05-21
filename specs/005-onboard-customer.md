@@ -1,6 +1,6 @@
 # 005. Onboard customer group
 
-**Status:** draft
+**Status:** in-review (use-case + handlers + integration-тесты ✅; ждёт gateway-tg для e2e и `cmd.tg.get_chat_member` для полноценного recheck-кнопки)
 **Author:** team
 **Created:** 2026-05-21
 
@@ -34,16 +34,36 @@ Onboarding:
 
 ## Acceptance criteria
 
-- [ ] При получении `events.tg.bot_membership_changed` с `new_status=administrator` core запускает онбординг.
-- [ ] Если `chat.is_forum=false` — бот пишет в General инструкцию включить форум-режим и выходит без записи в `customers`.
-- [ ] Если каких-то прав у бота нет — бот выводит чек-лист недостающих прав и кнопку `🔄 Проверить ещё раз`. Нажатие кнопки повторно запускает onboarding.
-- [ ] Если `chat_id` уже в `customers` — бот пишет «Уже подключено как '<title>'», ничего не пишет в БД.
-- [ ] При успехе: INSERT в `customers`, General переименован в `📋 Меню`, главное меню запинено, General закрыт.
-- [ ] `customers.menu_message_id` и `customers.onboarded_at` заполнены.
-- [ ] Системные сообщения о close/edit General удаляются (по `service_message_type`).
-- [ ] Команда `/setup` от исполнителя (`from_user.id` ∈ `executors`) приводит к тому же эффекту что автозапуск.
-- [ ] Команда `/setup` от не-исполнителя молча игнорируется (никакого ответа).
-- [ ] Если бота кикнули из группы (`new_status=left|kicked`) — пишется WARNING в `🤖 Логи`, `is_active` не меняется автоматически.
+- [x] При получении `events.tg.bot_membership_changed` с `new_status=administrator` core запускает онбординг. *([tg_bot_membership_changed handler](../services/core/src/core/handlers/tg_bot_membership_changed.py), test_happy_path)*
+- [x] Если `chat.is_forum=false` — бот пишет в группу инструкцию включить форум-режим и выходит без записи в `customers`. *(test_not_forum_sends_instruction)*
+- [x] Если каких-то прав у бота нет — бот выводит чек-лист недостающих прав и кнопку `🔄 Проверить ещё раз`. *(test_missing_rights_emits_checklist_with_button)*
+- [~] Нажатие кнопки повторно запускает onboarding. **Частично:** без `cmd.tg.get_chat_member` (отсутствует в шине) use-case не может сам перепроверить права. Кнопка отвечает toast + сообщением «Изменение прав вызовет авто-проверку через my_chat_member, или нажмите /setup». Реальный реcheck отрабатывается следующим `my_chat_member` от Telegram. Подробности — в Architecture note ниже.
+- [x] Если `chat_id` уже в `customers` (и `menu_message_id` заполнен) — бот пишет «Уже подключено как '<title>'», ничего не пишет в БД. *(test_already_registered_says_already_connected)*
+- [x] При успехе: запись в `customers`, General переименован в `📋 Меню`, отправляется главное меню, General закрыт. *(test_happy_path)*
+- [x] `customers.menu_message_id` (по `events.tg.message_sent`) и `customers.onboarded_at` заполнены. *(test_pins_menu_after_send + test_happy_path)*
+- [x] Системные сообщения о close/edit General удаляются (по `service_message_type` ∈ {forum_topic_closed, forum_topic_reopened, general_forum_topic_unhidden, general_forum_topic_hidden, forum_topic_edited}). *([tg_message handler](../services/core/src/core/handlers/tg_message.py) — реализовано ещё в spec 002, охватывает onboarding-сообщения тоже)*
+- [x] Команда `/setup` от исполнителя (`from_user.id` ∈ `executors`) приводит к тому же эффекту что автозапуск. *(test_emits_same_commands_as_membership_event + [tg_message _handle_setup_command](../services/core/src/core/handlers/tg_message.py))*
+- [x] Команда `/setup` от не-исполнителя молча игнорируется. *(проверка `actor is None or not actor.is_active` в `_handle_setup_command`)*
+- [x] Если бота кикнули из группы (`new_status=left|kicked`) — пишется WARNING в логи, `is_active` не меняется автоматически. *(`log_bot_kicked` + ветка в [tg_bot_membership_changed handler](../services/core/src/core/handlers/tg_bot_membership_changed.py))*
+
+**Артефакты текущего шага:**
+- Миграция [0004_customer_menu_correlation.py](../services/core/migrations/versions/20260521_0004_customer_menu_correlation.py) — `customers.menu_correlation_id UUID UNIQUE`
+- Domain [onboarding.py](../services/core/src/core/domain/onboarding.py): `MissingRights`, тексты, клавиатура с `setup_recheck`
+- [`OnboardCustomer`](../services/core/src/core/services/onboard_customer.py) — единая точка входа для membership-события и `/setup` команды; `HandleMenuMessageSent` (фаза 2)
+- [`tg_bot_membership_changed`](../services/core/src/core/handlers/tg_bot_membership_changed.py) handler
+- multiplexer в [`tg_callback`](../services/core/src/core/handlers/tg_callback.py) дополнен веткой `setup_recheck`
+- `/setup` распознаётся в [`tg_message`](../services/core/src/core/handlers/tg_message.py) и проверяет `executors`
+- 10 новых integration-тестов; всего 106 passing
+
+## Architecture note: ограничение recheck-кнопки
+
+Кнопка «🔄 Проверить ещё раз» по спеке должна **перепроверять текущие права бота**. Через шину получить актуальные права можно только запросив `getChatMember` у Telegram Bot API (gateway-tg → `cmd.tg.get_chat_member` → ответное событие).
+
+В текущей версии:
+- Этой команды в шине ещё нет (gateway-tg сам пока заглушка).
+- Поэтому при нажатии кнопки бот: (а) отвечает toast `Обновите права бота — проверка запустится сама`, (б) отправляет в чат сообщение с тем же текстом. Когда пользователь изменит права, Telegram пришлёт новый `my_chat_member`, onboarding запустится автоматически. Если пользователь хочет принудительно — ему остаётся `/setup`.
+
+Когда будем делать gateway-tg, добавим `cmd.tg.get_chat_member` + `events.tg.chat_member_response` и заменим заглушку на полноценный self-recheck. Это отмечено как известное ограничение, AC «нажатие кнопки повторно запускает onboarding» помечен `~`.
 
 ## Data changes
 

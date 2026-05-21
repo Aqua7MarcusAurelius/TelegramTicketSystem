@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from core.config import Settings
 from core.handlers import (
+    tg_bot_membership_changed,
     tg_callback,
     tg_message,
     tg_message_sent,
@@ -112,6 +113,7 @@ async def run() -> None:
     tg_message.register(broker, session_factory, settings)
     tg_topic_created.register(broker, session_factory)
     tg_message_sent.register(broker, session_factory)
+    tg_bot_membership_changed.register(broker, session_factory)
     ticket_created.register(broker, session_factory, settings)
     ticket_assigned.register(broker, session_factory, settings)
 
