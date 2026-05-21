@@ -51,3 +51,21 @@ class CustomersRepository:
         customer = await self._session.get(Customer, customer_id)
         if customer is not None:
             customer.menu_message_id = message_id
+
+    async def list_all(self, *, limit: int = 100) -> list[Customer]:
+        stmt = select(Customer).order_by(Customer.id).limit(limit)
+        return list((await self._session.execute(stmt)).scalars())
+
+    async def rename(self, telegram_chat_id: int, new_title: str) -> Customer | None:
+        c = await self.get_by_chat(telegram_chat_id)
+        if c is None:
+            return None
+        c.title = new_title
+        return c
+
+    async def set_active(self, telegram_chat_id: int, active: bool) -> Customer | None:
+        c = await self.get_by_chat(telegram_chat_id)
+        if c is None:
+            return None
+        c.is_active = active
+        return c

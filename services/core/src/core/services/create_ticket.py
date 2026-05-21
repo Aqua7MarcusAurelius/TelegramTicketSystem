@@ -123,6 +123,10 @@ class CreateTicketPhase1:
         customer = await self.customers.get_by_chat(event.chat_id)
         if customer is None:
             return TicketSkipped(reason="unknown_customer")
+        if not customer.is_active:
+            # SPEC §3.7 / spec 007: деактивированный заказчик не может создавать
+            # новые тикеты. Закрывать существующие — может.
+            return TicketSkipped(reason="customer_inactive")
         if customer.menu_message_id is None:
             # Меню ещё не создано (onboarding не завершён, spec 005) — не можем
             # редактировать. Лучше явный skip, чем шапку молча уронить.

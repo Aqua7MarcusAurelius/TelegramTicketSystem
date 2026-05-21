@@ -26,6 +26,14 @@ from core.repository.processed_events import ProcessedEventsRepository
 from core.repository.team_group import TeamGroupSetupRepository
 from core.repository.ticket_events import TicketEventsRepository
 from core.repository.tickets import TicketsRepository
+from core.services.admin_commands import (
+    ActivateCustomer,
+    AdminResult,
+    DeactivateCustomer,
+    ListCustomers,
+    ReloadExecutors,
+    RenameCustomer,
+)
 from core.services.create_ticket import (
     CreateTicketPhase1,
     TicketResult,
@@ -38,6 +46,16 @@ from core.services.setup_team_group import (
     PrintTopicId,
     SetupTeamGroup,
     TeamGroupResult,
+)
+
+ADMIN_COMMANDS = frozenset(
+    {
+        "/rename_customer",
+        "/deactivate_customer",
+        "/activate_customer",
+        "/reload_executors",
+        "/list_customers",
+    }
 )
 
 log = structlog.get_logger(__name__)
@@ -117,6 +135,16 @@ def register(
             and not event.is_bot
         ):
             await _handle_print_topic_id(event, session_factory, broker)
+            return
+
+        # Ветка 0.8: admin-команды §3.7 / spec 007. Все от исполнителя, иначе молча.
+        if (
+            event.text
+            and event.text.split()[0] in ADMIN_COMMANDS
+            and not event.is_service_message
+            and not event.is_bot
+        ):
+            await _handle_admin_command(event, session_factory, broker, settings)
             return
 
         # Ветка 1: системное сообщение от бота (forum_topic_closed и т.п.)
@@ -285,3 +313,49 @@ async def _handle_print_topic_id(
     if isinstance(result, TeamGroupResult):
         for cmd in result.commands:
             await broker.publish(cmd, stream=stream_for(cmd))
+
+
+async def _handle_admin_command(
+    event: TgMessage,
+    session_factory: async_sessionmaker,
+    broker: RedisBroker,
+    settings: Settings,
+) -> None:
+    """5 admin-команд §3.7. Только от активного исполнителя — иначе молча."""
+
+    cmd = (event.text or "").split()[0]
+
+    async with session_factory() as session:
+        execs = ExecutorsRepository(session)
+        actor = await execs.get_by_telegram_id(event.user_id)
+        if actor is None or not actor.is_active:
+            log.debug("admin_ignored_non_executor", command=cmd, user_id=event.user_id)
+            return
+
+        customers = CustomersRepository(session)
+        processed = ProcessedEventsRepository(session)
+
+        if cmd == "/rename_customer":
+            result = await RenameCustomer(customers=customers, processed=processed).execute(event)
+        elif cmd == "/deactivate_customer":
+            result = await DeactivateCustomer(customers=customers, processed=processed).execute(
+                event
+            )
+        elif cmd == "/activate_customer":
+            result = await ActivateCustomer(customers=customers, processed=processed).execute(event)
+        elif cmd == "/reload_executors":
+            result = await ReloadExecutors(
+                executors=execs,
+                processed=processed,
+                config_path=settings.executors_config_path,
+            ).execute(event)
+        elif cmd == "/list_customers":
+            result = await ListCustomers(customers=customers, processed=processed).execute(event)
+        else:
+            return  # отфильтровано ADMIN_COMMANDS, защита от регрессии
+
+        await session.commit()
+
+    assert isinstance(result, AdminResult)
+    for cmd_msg in result.commands:
+        await broker.publish(cmd_msg, stream=stream_for(cmd_msg))

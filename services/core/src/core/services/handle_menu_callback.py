@@ -117,6 +117,15 @@ class HandleMenuCallback:
                     show_alert=True,
                 ),
             )
+        if not customer.is_active:
+            return Skipped(
+                reason="customer_inactive",
+                answer=CmdAnswerCallbackQuery(
+                    callback_query_id=event.callback_query_id,
+                    text="Группа отключена",
+                    show_alert=False,
+                ),
+            )
 
         current_state = await self.fsm.get_state(user_id=event.user_id, chat_id=event.chat_id)
 
