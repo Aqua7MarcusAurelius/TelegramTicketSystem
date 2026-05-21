@@ -23,7 +23,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from shared.events import CmdAnswerCallbackQuery, CmdEditMessageText, TgCallback
+from shared.events import (
+    CmdAnswerCallbackQuery,
+    CmdCloseGeneralForumTopic,
+    CmdEditMessageText,
+    CmdReopenGeneralForumTopic,
+    Event,
+    TgCallback,
+)
 
 from core.domain.menu import (
     CREATING_PROMPT_TTL_SECONDS,
@@ -55,13 +62,16 @@ class MenuCallbackResult:
     edit: CmdEditMessageText | None
     answer: CmdAnswerCallbackQuery
     """Всегда присутствует — Telegram требует ответить на callback за 3 сек (SPEC §7.1)."""
+    extras: tuple[Event, ...] = ()
+    """Доп. команды (например, открытие/закрытие General при входе/выходе из creating_prompt)."""
 
     @property
-    def commands(self) -> list[CmdEditMessageText | CmdAnswerCallbackQuery]:
-        result: list[CmdEditMessageText | CmdAnswerCallbackQuery] = []
+    def commands(self) -> list[Event]:
+        result: list[Event] = []
         if self.edit is not None:
             result.append(self.edit)
         result.append(self.answer)
+        result.extend(self.extras)
         return result
 
 
@@ -147,6 +157,10 @@ class HandleMenuCallback:
             user_id=event.user_id,
         )
 
+        extras = _general_topic_commands(
+            from_state=current_state, to_state=target_state, chat_id=event.chat_id
+        )
+
         return MenuCallbackResult(
             edit=CmdEditMessageText(
                 chat_id=event.chat_id,
@@ -156,6 +170,7 @@ class HandleMenuCallback:
                 parse_mode="HTML",
             ),
             answer=CmdAnswerCallbackQuery(callback_query_id=event.callback_query_id),
+            extras=extras,
         )
 
     async def _render(
@@ -235,3 +250,20 @@ def _page_from(parsed: object) -> int:
 
 def _to_row(t: Ticket) -> TicketRow:
     return TicketRow(id=t.id, title=t.title, status=t.status.value, topic_id=t.topic_id)
+
+
+def _general_topic_commands(
+    *, from_state: MenuState, to_state: MenuState, chat_id: int
+) -> tuple[Event, ...]:
+    """Открыть General на время ввода тикета, закрыть на выходе.
+
+    SPEC §7.2: бот делает ``reopenGeneralForumTopic`` после нажатия «🆕 Новый тикет»
+    и ``closeGeneralForumTopic`` при выходе из ``creating_prompt`` (отмена, таймаут,
+    либо после успешного создания тикета — последнее делает CreateTicket use-case).
+    """
+
+    if from_state is not MenuState.CREATING_PROMPT and to_state is MenuState.CREATING_PROMPT:
+        return (CmdReopenGeneralForumTopic(chat_id=chat_id),)
+    if from_state is MenuState.CREATING_PROMPT and to_state is MenuState.MAIN:
+        return (CmdCloseGeneralForumTopic(chat_id=chat_id),)
+    return ()

@@ -32,7 +32,13 @@ from core.services.handle_menu_callback import (
     MenuCallbackResult,
     Skipped,
 )
-from shared.events import CmdAnswerCallbackQuery, CmdEditMessageText, TgCallback
+from shared.events import (
+    CmdAnswerCallbackQuery,
+    CmdCloseGeneralForumTopic,
+    CmdEditMessageText,
+    CmdReopenGeneralForumTopic,
+    TgCallback,
+)
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -157,6 +163,33 @@ class TestHappyPath:
         # Идемпотентность — event_id записан
         marked = await session.get(ProcessedEvent, event.event_id)
         assert marked is not None
+
+    async def test_main_to_creating_prompt_reopens_general(
+        self, session: AsyncSession, use_case: HandleMenuCallback
+    ) -> None:
+        await _seed_customer(session)
+        event = _make_callback(MenuAction.NEW_TICKET)
+
+        result = await use_case.execute(event)
+        await session.commit()
+        assert isinstance(result, MenuCallbackResult)
+        # Среди extras должен быть reopen General — SPEC §7.2
+        assert any(isinstance(cmd, CmdReopenGeneralForumTopic) for cmd in result.extras)
+        reopen = next(cmd for cmd in result.extras if isinstance(cmd, CmdReopenGeneralForumTopic))
+        assert reopen.chat_id == CUSTOMER_CHAT_ID
+
+    async def test_cancel_from_creating_prompt_closes_general(
+        self, session: AsyncSession, use_case: HandleMenuCallback
+    ) -> None:
+        await _seed_customer(session)
+        # Сначала перейдём в creating_prompt
+        await use_case.execute(_make_callback(MenuAction.NEW_TICKET))
+        await session.commit()
+        # Теперь отменяем — General должен закрыться
+        result = await use_case.execute(_make_callback(MenuAction.CANCEL))
+        await session.commit()
+        assert isinstance(result, MenuCallbackResult)
+        assert any(isinstance(cmd, CmdCloseGeneralForumTopic) for cmd in result.extras)
 
     async def test_main_to_creating_prompt_sets_ttl(
         self, session: AsyncSession, use_case: HandleMenuCallback

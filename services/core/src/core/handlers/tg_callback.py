@@ -8,11 +8,8 @@ from __future__ import annotations
 import structlog
 from faststream.redis import RedisBroker
 from shared.events import TgCallback
-from shared.events.streams import (
-    CMD_TG_ANSWER_CALLBACK_QUERY,
-    CMD_TG_EDIT_MESSAGE_TEXT,
-    TG_CALLBACK,
-)
+from shared.events.dispatch import stream_for
+from shared.events.streams import TG_CALLBACK
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from core.repository.customers import CustomersRepository
@@ -31,10 +28,7 @@ def register(
     broker: RedisBroker,
     session_factory: async_sessionmaker,
 ) -> None:
-    """Зарегистрировать подписчика на ``events.tg.callback``.
-
-    Один обработчик на сервис, consumer-group по умолчанию (`core`).
-    """
+    """Зарегистрировать подписчика на ``events.tg.callback``."""
 
     @broker.subscriber(stream=TG_CALLBACK, group="core")
     async def on_tg_callback(event: TgCallback) -> None:
@@ -50,14 +44,11 @@ def register(
 
         if isinstance(result, MenuCallbackResult):
             for cmd in result.commands:
-                if cmd.__class__.__name__ == "CmdEditMessageText":
-                    await broker.publish(cmd, stream=CMD_TG_EDIT_MESSAGE_TEXT)
-                elif cmd.__class__.__name__ == "CmdAnswerCallbackQuery":
-                    await broker.publish(cmd, stream=CMD_TG_ANSWER_CALLBACK_QUERY)
+                await broker.publish(cmd, stream=stream_for(cmd))
             return
 
-        # Skipped — может содержать toast (например, «уже закрыт»).
+        # Skipped — может содержать toast.
         if result.answer is not None:
-            await broker.publish(result.answer, stream=CMD_TG_ANSWER_CALLBACK_QUERY)
+            await broker.publish(result.answer, stream=stream_for(result.answer))
         else:
             log.debug("menu_callback_skipped", reason=result.reason, event_id=event.event_id)

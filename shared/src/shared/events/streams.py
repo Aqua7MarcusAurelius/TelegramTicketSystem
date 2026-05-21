@@ -20,6 +20,7 @@ TICKET_CLOSED: Final = "events.ticket.closed"
 TG_MESSAGE: Final = "events.tg.message"
 TG_CALLBACK: Final = "events.tg.callback"
 TG_TOPIC_CREATED: Final = "events.tg.topic_created"
+TG_MESSAGE_SENT: Final = "events.tg.message_sent"
 TG_BOT_MEMBERSHIP_CHANGED: Final = "events.tg.bot_membership_changed"
 TG_ERROR: Final = "events.tg.error"
 

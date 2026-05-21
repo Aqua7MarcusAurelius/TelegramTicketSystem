@@ -81,6 +81,19 @@ class TgBotMembershipChanged(Event):
     actor_user_id: int
 
 
+class TgMessageSent(Event):
+    """``events.tg.message_sent`` — ответ на ``cmd.tg.send_message``.
+
+    Публикуется gateway-tg ТОЛЬКО для команд, у которых выставлен ``correlation_id`` —
+    иначе нет смысла. Использование: фаза 3 создания тикета (spec 002) ищет тикет
+    по ``correlation_id`` и сохраняет ``message_id`` шапки.
+    """
+
+    chat_id: int
+    topic_id: int | None
+    message_id: int
+
+
 class TgError(Event):
     """``events.tg.error`` — gateway-tg не смог выполнить команду.
 

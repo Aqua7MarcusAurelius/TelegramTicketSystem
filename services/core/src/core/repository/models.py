@@ -94,8 +94,14 @@ class Ticket(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     customer_id: Mapped[int] = mapped_column(Integer, ForeignKey("customers.id"), nullable=False)
-    topic_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    # NULL до того, как gateway-tg ответит events.tg.topic_created (spec 002, фаза 2).
+    topic_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     header_message_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # UUID, который мы ставим в correlation_id команд create_forum_topic / send_message,
+    # чтобы фазы 2 и 3 могли найти этот тикет по ответным событиям. Spec 002.
+    create_correlation_id: Mapped[Any] = mapped_column(
+        UUID(as_uuid=True), unique=True, nullable=True
+    )
     title: Mapped[str] = mapped_column(Text, nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[TicketStatus] = mapped_column(

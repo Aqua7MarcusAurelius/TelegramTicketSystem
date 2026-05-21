@@ -26,6 +26,7 @@ from shared.events.tg import (
     TgCallback,
     TgError,
     TgMessage,
+    TgMessageSent,
     TgTopicCreated,
 )
 from shared.events.ticket import TicketAssigned, TicketClosed, TicketCreated
@@ -53,6 +54,7 @@ __all__ = [
     "TgCallback",
     "TgError",
     "TgMessage",
+    "TgMessageSent",
     "TgTopicCreated",
     # Domain (events.ticket.*)
     "TicketAssigned",
