@@ -1,8 +1,6 @@
-"""Unit-тесты executor'а cmd.tg.* (gateway-tg, 8a).
+"""Unit-тесты executor'а cmd.tg.* (gateway-tg, 8a + 8b).
 
 aiogram.Bot мокается через AsyncMock — мы не делаем сетевых вызовов.
-FastStream RedisBroker используется в режиме «TestBroker» для inproc-публикации;
-здесь нам достаточно мокнуть `broker.publish` для проверки эмиссии TgMessageSent.
 """
 
 from __future__ import annotations
@@ -13,16 +11,24 @@ from uuid import uuid4
 
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.methods import TelegramMethod
-from aiogram.types import Chat, Message, User
+from aiogram.types import Chat, ForumTopic, Message, User
 from gateway_tg.outbound.executor import register
 from gateway_tg.outbound.mappers import to_inline_keyboard
 from shared.events import (
     CmdAnswerCallbackQuery,
+    CmdCloseForumTopic,
+    CmdCloseGeneralForumTopic,
+    CmdCreateForumTopic,
     CmdDeleteMessage,
+    CmdEditForumTopic,
+    CmdEditGeneralForumTopic,
     CmdEditMessageText,
     CmdPinMessage,
+    CmdReopenForumTopic,
+    CmdReopenGeneralForumTopic,
     CmdSendMessage,
     TgMessageSent,
+    TgTopicCreated,
 )
 
 # ---------------------------------------------------------------------
@@ -249,3 +255,97 @@ class TestPinMessage:
         bot.pin_chat_message.assert_awaited_once_with(
             chat_id=1, message_id=7, disable_notification=True
         )
+
+
+# ---------------------------------------------------------------------
+# Forum operations (8b)
+# ---------------------------------------------------------------------
+
+
+def _fake_topic(*, message_thread_id: int = 999, name: str = "T") -> ForumTopic:
+    return ForumTopic(
+        message_thread_id=message_thread_id,
+        name=name,
+        icon_color=0x6FB9F0,
+    )
+
+
+class TestCreateForumTopic:
+    async def test_publishes_topic_created_with_correlation(self) -> None:
+        broker, bot, handlers = _make_subscribed_broker_and_bot()
+        bot.create_forum_topic.return_value = _fake_topic(message_thread_id=555, name="X")
+
+        corr = uuid4()
+        await handlers["cmd.tg.create_forum_topic"](
+            CmdCreateForumTopic(
+                correlation_id=corr,
+                chat_id=-1001234567890,
+                name="X",
+                icon_custom_emoji_id="emoji-id",
+            )
+        )
+
+        bot.create_forum_topic.assert_awaited_once_with(
+            chat_id=-1001234567890, name="X", icon_custom_emoji_id="emoji-id"
+        )
+        broker.publish.assert_awaited_once()
+        ev = broker.publish.await_args.args[0]
+        assert isinstance(ev, TgTopicCreated)
+        assert ev.correlation_id == corr
+        assert ev.topic_id == 555
+        assert ev.name == "X"
+        assert broker.publish.await_args.kwargs["stream"] == "events.tg.topic_created"
+
+    async def test_does_not_publish_on_telegram_error(self) -> None:
+        broker, bot, handlers = _make_subscribed_broker_and_bot()
+        bot.create_forum_topic.side_effect = _bad_request("topic limit reached")
+
+        await handlers["cmd.tg.create_forum_topic"](
+            CmdCreateForumTopic(correlation_id=uuid4(), chat_id=1, name="X")
+        )
+        broker.publish.assert_not_awaited()
+
+
+class TestEditForumTopic:
+    async def test_calls_bot(self) -> None:
+        _, bot, handlers = _make_subscribed_broker_and_bot()
+        await handlers["cmd.tg.edit_forum_topic"](
+            CmdEditForumTopic(chat_id=1, topic_id=7, name="новое имя", icon_custom_emoji_id="icon")
+        )
+        bot.edit_forum_topic.assert_awaited_once_with(
+            chat_id=1, message_thread_id=7, name="новое имя", icon_custom_emoji_id="icon"
+        )
+
+
+class TestCloseReopenForumTopic:
+    async def test_close(self) -> None:
+        _, bot, handlers = _make_subscribed_broker_and_bot()
+        await handlers["cmd.tg.close_forum_topic"](CmdCloseForumTopic(chat_id=1, topic_id=7))
+        bot.close_forum_topic.assert_awaited_once_with(chat_id=1, message_thread_id=7)
+
+    async def test_reopen(self) -> None:
+        _, bot, handlers = _make_subscribed_broker_and_bot()
+        await handlers["cmd.tg.reopen_forum_topic"](CmdReopenForumTopic(chat_id=1, topic_id=7))
+        bot.reopen_forum_topic.assert_awaited_once_with(chat_id=1, message_thread_id=7)
+
+
+class TestGeneralForumTopic:
+    async def test_edit(self) -> None:
+        _, bot, handlers = _make_subscribed_broker_and_bot()
+        await handlers["cmd.tg.edit_general_forum_topic"](
+            CmdEditGeneralForumTopic(chat_id=1, name="📋 Меню")
+        )
+        bot.edit_general_forum_topic.assert_awaited_once_with(chat_id=1, name="📋 Меню")
+
+    async def test_close_and_reopen(self) -> None:
+        _, bot, handlers = _make_subscribed_broker_and_bot()
+        await handlers["cmd.tg.close_general_forum_topic"](CmdCloseGeneralForumTopic(chat_id=1))
+        await handlers["cmd.tg.reopen_general_forum_topic"](CmdReopenGeneralForumTopic(chat_id=1))
+        bot.close_general_forum_topic.assert_awaited_once_with(chat_id=1)
+        bot.reopen_general_forum_topic.assert_awaited_once_with(chat_id=1)
+
+    async def test_close_swallows_already_closed_error(self) -> None:
+        _, bot, handlers = _make_subscribed_broker_and_bot()
+        bot.close_general_forum_topic.side_effect = _bad_request("topic already closed")
+        # Не падаем
+        await handlers["cmd.tg.close_general_forum_topic"](CmdCloseGeneralForumTopic(chat_id=1))

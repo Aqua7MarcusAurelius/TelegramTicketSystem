@@ -1,8 +1,8 @@
 """Подписчики ``cmd.tg.*`` — вызывают методы aiogram Bot API.
 
-В 8a реализованы 5 базовых команд: send_message, edit_message_text,
-delete_message, answer_callback_query, pin_message. Форум-операции
-(create_forum_topic и т.п.) и webhook-режим — в 8b.
+8a добавил 5 базовых команд (send/edit/delete/answer/pin). 8b добавил 7
+форум-операций + эмиссию ``events.tg.topic_created`` после успешного
+``createForumTopic`` (нужно spec 002 фазе 2 и spec 006).
 
 Идемпотентность по ``event_id`` мы не делаем здесь сознательно: рассинхрон
 «я уже отправил, но не успел подтвердить» хуже, чем дубликат сообщения.
@@ -17,18 +17,33 @@ from aiogram.exceptions import TelegramBadRequest
 from faststream.redis import RedisBroker
 from shared.events import (
     CmdAnswerCallbackQuery,
+    CmdCloseForumTopic,
+    CmdCloseGeneralForumTopic,
+    CmdCreateForumTopic,
     CmdDeleteMessage,
+    CmdEditForumTopic,
+    CmdEditGeneralForumTopic,
     CmdEditMessageText,
     CmdPinMessage,
+    CmdReopenForumTopic,
+    CmdReopenGeneralForumTopic,
     CmdSendMessage,
     TgMessageSent,
+    TgTopicCreated,
 )
 from shared.events.dispatch import stream_for
 from shared.events.streams import (
     CMD_TG_ANSWER_CALLBACK_QUERY,
+    CMD_TG_CLOSE_FORUM_TOPIC,
+    CMD_TG_CLOSE_GENERAL_FORUM_TOPIC,
+    CMD_TG_CREATE_FORUM_TOPIC,
     CMD_TG_DELETE_MESSAGE,
+    CMD_TG_EDIT_FORUM_TOPIC,
+    CMD_TG_EDIT_GENERAL_FORUM_TOPIC,
     CMD_TG_EDIT_MESSAGE_TEXT,
     CMD_TG_PIN_MESSAGE,
+    CMD_TG_REOPEN_FORUM_TOPIC,
+    CMD_TG_REOPEN_GENERAL_FORUM_TOPIC,
     CMD_TG_SEND_MESSAGE,
 )
 
@@ -38,7 +53,7 @@ log = structlog.get_logger(__name__)
 
 
 def register(broker: RedisBroker, bot: Bot) -> None:
-    """Зарегистрировать подписчиков на 5 базовых ``cmd.tg.*`` команд."""
+    """Зарегистрировать подписчиков на 12 ``cmd.tg.*`` команд (8a + 8b)."""
 
     @broker.subscriber(stream=CMD_TG_SEND_MESSAGE, group="gateway-tg")
     async def _send_message(cmd: CmdSendMessage) -> None:
@@ -120,3 +135,97 @@ def register(broker: RedisBroker, bot: Bot) -> None:
             )
         except TelegramBadRequest as e:
             log.error("pin_message_failed", chat_id=cmd.chat_id, error=str(e))
+
+    # -----------------------------------------------------------------
+    # Форум-операции (8b). Ответ Bot API на createForumTopic превращается
+    # в events.tg.topic_created с тем же correlation_id.
+    # -----------------------------------------------------------------
+
+    @broker.subscriber(stream=CMD_TG_CREATE_FORUM_TOPIC, group="gateway-tg")
+    async def _create_forum_topic(cmd: CmdCreateForumTopic) -> None:
+        try:
+            topic = await bot.create_forum_topic(
+                chat_id=cmd.chat_id,
+                name=cmd.name,
+                icon_custom_emoji_id=cmd.icon_custom_emoji_id,
+            )
+        except TelegramBadRequest as e:
+            log.error(
+                "create_forum_topic_failed",
+                chat_id=cmd.chat_id,
+                name=cmd.name,
+                error=str(e),
+                correlation_id=cmd.correlation_id,
+            )
+            return
+
+        ack = TgTopicCreated(
+            correlation_id=cmd.correlation_id,
+            chat_id=cmd.chat_id,
+            topic_id=topic.message_thread_id,
+            name=topic.name,
+        )
+        await broker.publish(ack, stream=stream_for(ack))
+
+    @broker.subscriber(stream=CMD_TG_EDIT_FORUM_TOPIC, group="gateway-tg")
+    async def _edit_forum_topic(cmd: CmdEditForumTopic) -> None:
+        try:
+            await bot.edit_forum_topic(
+                chat_id=cmd.chat_id,
+                message_thread_id=cmd.topic_id,
+                name=cmd.name,
+                icon_custom_emoji_id=cmd.icon_custom_emoji_id,
+            )
+        except TelegramBadRequest as e:
+            log.error(
+                "edit_forum_topic_failed",
+                chat_id=cmd.chat_id,
+                topic_id=cmd.topic_id,
+                error=str(e),
+            )
+
+    @broker.subscriber(stream=CMD_TG_CLOSE_FORUM_TOPIC, group="gateway-tg")
+    async def _close_forum_topic(cmd: CmdCloseForumTopic) -> None:
+        try:
+            await bot.close_forum_topic(chat_id=cmd.chat_id, message_thread_id=cmd.topic_id)
+        except TelegramBadRequest as e:
+            log.error(
+                "close_forum_topic_failed",
+                chat_id=cmd.chat_id,
+                topic_id=cmd.topic_id,
+                error=str(e),
+            )
+
+    @broker.subscriber(stream=CMD_TG_REOPEN_FORUM_TOPIC, group="gateway-tg")
+    async def _reopen_forum_topic(cmd: CmdReopenForumTopic) -> None:
+        try:
+            await bot.reopen_forum_topic(chat_id=cmd.chat_id, message_thread_id=cmd.topic_id)
+        except TelegramBadRequest as e:
+            log.error(
+                "reopen_forum_topic_failed",
+                chat_id=cmd.chat_id,
+                topic_id=cmd.topic_id,
+                error=str(e),
+            )
+
+    @broker.subscriber(stream=CMD_TG_EDIT_GENERAL_FORUM_TOPIC, group="gateway-tg")
+    async def _edit_general_forum_topic(cmd: CmdEditGeneralForumTopic) -> None:
+        try:
+            await bot.edit_general_forum_topic(chat_id=cmd.chat_id, name=cmd.name)
+        except TelegramBadRequest as e:
+            log.error("edit_general_forum_topic_failed", chat_id=cmd.chat_id, error=str(e))
+
+    @broker.subscriber(stream=CMD_TG_CLOSE_GENERAL_FORUM_TOPIC, group="gateway-tg")
+    async def _close_general_forum_topic(cmd: CmdCloseGeneralForumTopic) -> None:
+        try:
+            await bot.close_general_forum_topic(chat_id=cmd.chat_id)
+        except TelegramBadRequest as e:
+            # «TOPIC_CLOSED» / «general topic already closed» — не ошибка.
+            log.debug("close_general_forum_topic_skipped", chat_id=cmd.chat_id, error=str(e))
+
+    @broker.subscriber(stream=CMD_TG_REOPEN_GENERAL_FORUM_TOPIC, group="gateway-tg")
+    async def _reopen_general_forum_topic(cmd: CmdReopenGeneralForumTopic) -> None:
+        try:
+            await bot.reopen_general_forum_topic(chat_id=cmd.chat_id)
+        except TelegramBadRequest as e:
+            log.debug("reopen_general_forum_topic_skipped", chat_id=cmd.chat_id, error=str(e))
