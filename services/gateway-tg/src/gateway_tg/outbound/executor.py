@@ -15,6 +15,7 @@ import structlog
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest
 from faststream.redis import RedisBroker
+from shared.bus import stream_sub
 from shared.events import (
     CmdAnswerCallbackQuery,
     CmdCloseForumTopic,
@@ -55,7 +56,7 @@ log = structlog.get_logger(__name__)
 def register(broker: RedisBroker, bot: Bot) -> None:
     """Зарегистрировать подписчиков на 12 ``cmd.tg.*`` команд (8a + 8b)."""
 
-    @broker.subscriber(stream=CMD_TG_SEND_MESSAGE, group="gateway-tg")
+    @broker.subscriber(stream=stream_sub(CMD_TG_SEND_MESSAGE, group="gateway-tg"))
     async def _send_message(cmd: CmdSendMessage) -> None:
         try:
             sent = await bot.send_message(
@@ -86,7 +87,7 @@ def register(broker: RedisBroker, bot: Bot) -> None:
             )
             await broker.publish(ack, stream=stream_for(ack))
 
-    @broker.subscriber(stream=CMD_TG_EDIT_MESSAGE_TEXT, group="gateway-tg")
+    @broker.subscriber(stream=stream_sub(CMD_TG_EDIT_MESSAGE_TEXT, group="gateway-tg"))
     async def _edit_message_text(cmd: CmdEditMessageText) -> None:
         try:
             await bot.edit_message_text(
@@ -105,7 +106,7 @@ def register(broker: RedisBroker, bot: Bot) -> None:
                 return
             log.error("edit_message_text_failed", chat_id=cmd.chat_id, error=msg)
 
-    @broker.subscriber(stream=CMD_TG_DELETE_MESSAGE, group="gateway-tg")
+    @broker.subscriber(stream=stream_sub(CMD_TG_DELETE_MESSAGE, group="gateway-tg"))
     async def _delete_message(cmd: CmdDeleteMessage) -> None:
         try:
             await bot.delete_message(chat_id=cmd.chat_id, message_id=cmd.message_id)
@@ -113,7 +114,7 @@ def register(broker: RedisBroker, bot: Bot) -> None:
             # Может быть «message to delete not found» — тоже не ошибка.
             log.debug("delete_message_failed", chat_id=cmd.chat_id, error=str(e))
 
-    @broker.subscriber(stream=CMD_TG_ANSWER_CALLBACK_QUERY, group="gateway-tg")
+    @broker.subscriber(stream=stream_sub(CMD_TG_ANSWER_CALLBACK_QUERY, group="gateway-tg"))
     async def _answer_callback_query(cmd: CmdAnswerCallbackQuery) -> None:
         try:
             await bot.answer_callback_query(
@@ -125,7 +126,7 @@ def register(broker: RedisBroker, bot: Bot) -> None:
             # «query is too old» — нормальная ситуация, если core медленно ответил.
             log.debug("answer_callback_query_failed", error=str(e))
 
-    @broker.subscriber(stream=CMD_TG_PIN_MESSAGE, group="gateway-tg")
+    @broker.subscriber(stream=stream_sub(CMD_TG_PIN_MESSAGE, group="gateway-tg"))
     async def _pin_message(cmd: CmdPinMessage) -> None:
         try:
             await bot.pin_chat_message(
@@ -141,7 +142,7 @@ def register(broker: RedisBroker, bot: Bot) -> None:
     # в events.tg.topic_created с тем же correlation_id.
     # -----------------------------------------------------------------
 
-    @broker.subscriber(stream=CMD_TG_CREATE_FORUM_TOPIC, group="gateway-tg")
+    @broker.subscriber(stream=stream_sub(CMD_TG_CREATE_FORUM_TOPIC, group="gateway-tg"))
     async def _create_forum_topic(cmd: CmdCreateForumTopic) -> None:
         try:
             topic = await bot.create_forum_topic(
@@ -167,7 +168,7 @@ def register(broker: RedisBroker, bot: Bot) -> None:
         )
         await broker.publish(ack, stream=stream_for(ack))
 
-    @broker.subscriber(stream=CMD_TG_EDIT_FORUM_TOPIC, group="gateway-tg")
+    @broker.subscriber(stream=stream_sub(CMD_TG_EDIT_FORUM_TOPIC, group="gateway-tg"))
     async def _edit_forum_topic(cmd: CmdEditForumTopic) -> None:
         try:
             await bot.edit_forum_topic(
@@ -184,7 +185,7 @@ def register(broker: RedisBroker, bot: Bot) -> None:
                 error=str(e),
             )
 
-    @broker.subscriber(stream=CMD_TG_CLOSE_FORUM_TOPIC, group="gateway-tg")
+    @broker.subscriber(stream=stream_sub(CMD_TG_CLOSE_FORUM_TOPIC, group="gateway-tg"))
     async def _close_forum_topic(cmd: CmdCloseForumTopic) -> None:
         try:
             await bot.close_forum_topic(chat_id=cmd.chat_id, message_thread_id=cmd.topic_id)
@@ -196,7 +197,7 @@ def register(broker: RedisBroker, bot: Bot) -> None:
                 error=str(e),
             )
 
-    @broker.subscriber(stream=CMD_TG_REOPEN_FORUM_TOPIC, group="gateway-tg")
+    @broker.subscriber(stream=stream_sub(CMD_TG_REOPEN_FORUM_TOPIC, group="gateway-tg"))
     async def _reopen_forum_topic(cmd: CmdReopenForumTopic) -> None:
         try:
             await bot.reopen_forum_topic(chat_id=cmd.chat_id, message_thread_id=cmd.topic_id)
@@ -208,14 +209,14 @@ def register(broker: RedisBroker, bot: Bot) -> None:
                 error=str(e),
             )
 
-    @broker.subscriber(stream=CMD_TG_EDIT_GENERAL_FORUM_TOPIC, group="gateway-tg")
+    @broker.subscriber(stream=stream_sub(CMD_TG_EDIT_GENERAL_FORUM_TOPIC, group="gateway-tg"))
     async def _edit_general_forum_topic(cmd: CmdEditGeneralForumTopic) -> None:
         try:
             await bot.edit_general_forum_topic(chat_id=cmd.chat_id, name=cmd.name)
         except TelegramBadRequest as e:
             log.error("edit_general_forum_topic_failed", chat_id=cmd.chat_id, error=str(e))
 
-    @broker.subscriber(stream=CMD_TG_CLOSE_GENERAL_FORUM_TOPIC, group="gateway-tg")
+    @broker.subscriber(stream=stream_sub(CMD_TG_CLOSE_GENERAL_FORUM_TOPIC, group="gateway-tg"))
     async def _close_general_forum_topic(cmd: CmdCloseGeneralForumTopic) -> None:
         try:
             await bot.close_general_forum_topic(chat_id=cmd.chat_id)
@@ -223,7 +224,7 @@ def register(broker: RedisBroker, bot: Bot) -> None:
             # «TOPIC_CLOSED» / «general topic already closed» — не ошибка.
             log.debug("close_general_forum_topic_skipped", chat_id=cmd.chat_id, error=str(e))
 
-    @broker.subscriber(stream=CMD_TG_REOPEN_GENERAL_FORUM_TOPIC, group="gateway-tg")
+    @broker.subscriber(stream=stream_sub(CMD_TG_REOPEN_GENERAL_FORUM_TOPIC, group="gateway-tg"))
     async def _reopen_general_forum_topic(cmd: CmdReopenGeneralForumTopic) -> None:
         try:
             await bot.reopen_general_forum_topic(chat_id=cmd.chat_id)

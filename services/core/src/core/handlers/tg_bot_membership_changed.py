@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import structlog
 from faststream.redis import RedisBroker
+from shared.bus import stream_sub
 from shared.events import TgBotMembershipChanged
 from shared.events.dispatch import stream_for
 from shared.events.streams import TG_BOT_MEMBERSHIP_CHANGED
@@ -24,7 +25,7 @@ def register(
     broker: RedisBroker,
     session_factory: async_sessionmaker,
 ) -> None:
-    @broker.subscriber(stream=TG_BOT_MEMBERSHIP_CHANGED, group="core")
+    @broker.subscriber(stream=stream_sub(TG_BOT_MEMBERSHIP_CHANGED, group="core"))
     async def on_membership_changed(event: TgBotMembershipChanged) -> None:
         # kick/left — отдельная короткая ветка
         if event.new_status in {"left", "kicked"}:

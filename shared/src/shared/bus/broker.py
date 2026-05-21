@@ -8,7 +8,7 @@
 
 from __future__ import annotations
 
-from faststream.redis import RedisBroker
+from faststream.redis import RedisBroker, StreamSub
 
 
 def redis_streams_url(redis_url: str) -> str:
@@ -32,3 +32,14 @@ def build_broker(redis_url: str) -> RedisBroker:
     """
 
     return RedisBroker(redis_streams_url(redis_url))
+
+
+def stream_sub(name: str, *, group: str, consumer: str = "default") -> StreamSub:
+    """Хелпер: вернуть `StreamSub` для подписки на Redis Stream.
+
+    FastStream требует StreamSub-объект, чтобы knowing про consumer group:
+    разные сервисы НЕ должны читать одно событие дважды, поэтому каждый
+    сервис подписывается через свою group.
+    """
+
+    return StreamSub(name, group=group, consumer=consumer)

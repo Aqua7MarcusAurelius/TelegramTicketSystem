@@ -12,6 +12,7 @@ import asyncio
 
 import structlog
 from faststream.redis import RedisBroker
+from shared.bus import stream_sub
 from shared.events import TicketAssigned, TicketClosed, TicketCreated
 from shared.events.streams import (
     TICKET_ASSIGNED,
@@ -55,15 +56,15 @@ def register(
 
     queue: asyncio.Queue[_QueueItem] = asyncio.Queue()
 
-    @broker.subscriber(stream=TICKET_CREATED, group="sheets-sync")
+    @broker.subscriber(stream=stream_sub(TICKET_CREATED, group="sheets-sync"))
     async def _on_created(event: TicketCreated) -> None:
         await queue.put(event)
 
-    @broker.subscriber(stream=TICKET_ASSIGNED, group="sheets-sync")
+    @broker.subscriber(stream=stream_sub(TICKET_ASSIGNED, group="sheets-sync"))
     async def _on_assigned(event: TicketAssigned) -> None:
         await queue.put(event)
 
-    @broker.subscriber(stream=TICKET_CLOSED, group="sheets-sync")
+    @broker.subscriber(stream=stream_sub(TICKET_CLOSED, group="sheets-sync"))
     async def _on_closed(event: TicketClosed) -> None:
         await queue.put(event)
 

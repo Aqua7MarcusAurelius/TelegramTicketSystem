@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import structlog
 from faststream.redis import RedisBroker
+from shared.bus import stream_sub
 from shared.events import DailyDigestTick
 from shared.events.dispatch import stream_for
 from shared.events.streams import SCHEDULE_DAILY_DIGEST
@@ -21,7 +22,7 @@ def register(
     session_factory: async_sessionmaker,
     settings: Settings,
 ) -> None:
-    @broker.subscriber(stream=SCHEDULE_DAILY_DIGEST, group="core")
+    @broker.subscriber(stream=stream_sub(SCHEDULE_DAILY_DIGEST, group="core"))
     async def on_daily_digest(event: DailyDigestTick) -> None:
         async with session_factory() as session:
             use_case = BuildDailyDigest(

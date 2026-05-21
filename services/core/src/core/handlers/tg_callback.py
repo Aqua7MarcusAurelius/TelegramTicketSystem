@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import structlog
 from faststream.redis import RedisBroker
+from shared.bus import stream_sub
 from shared.events import CmdAnswerCallbackQuery, CmdSendMessage, TgCallback
 from shared.events.dispatch import stream_for
 from shared.events.streams import TG_CALLBACK
@@ -51,7 +52,7 @@ def register(
     session_factory: async_sessionmaker,
     settings: Settings,
 ) -> None:
-    @broker.subscriber(stream=TG_CALLBACK, group="core")
+    @broker.subscriber(stream=stream_sub(TG_CALLBACK, group="core"))
     async def on_tg_callback(event: TgCallback) -> None:
         prefix = event.callback_data.split(":", 1)[0] if ":" in event.callback_data else ""
         bare = event.callback_data.strip()

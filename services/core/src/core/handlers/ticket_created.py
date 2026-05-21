@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import structlog
 from faststream.redis import RedisBroker
+from shared.bus import stream_sub
 from shared.events import TicketCreated
 from shared.events.dispatch import stream_for
 from shared.events.streams import TICKET_CREATED
@@ -24,7 +25,7 @@ def register(
     session_factory: async_sessionmaker,
     settings: Settings,
 ) -> None:
-    @broker.subscriber(stream=TICKET_CREATED, group="core")
+    @broker.subscriber(stream=stream_sub(TICKET_CREATED, group="core"))
     async def on_ticket_created(event: TicketCreated) -> None:
         async with session_factory() as session:
             use_case = PublishIncomingCard(

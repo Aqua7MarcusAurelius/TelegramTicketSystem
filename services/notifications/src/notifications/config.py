@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from shared.config import OptionalInt, OptionalStr
 
 
 class Settings(BaseSettings):
@@ -16,15 +17,17 @@ class Settings(BaseSettings):
     postgres_dsn: str = Field(alias="POSTGRES_DSN")
     redis_url: str = Field(alias="REDIS_URL")
 
-    executor_group_chat_id: int | None = Field(default=None, alias="EXECUTOR_GROUP_CHAT_ID")
-    executor_group_topic_incoming: int | None = Field(
+    executor_group_chat_id: OptionalInt = Field(default=None, alias="EXECUTOR_GROUP_CHAT_ID")
+    executor_group_topic_incoming: OptionalInt = Field(
         default=None, alias="EXECUTOR_GROUP_TOPIC_INCOMING"
     )
-    executor_group_topic_digest: int | None = Field(
+    executor_group_topic_digest: OptionalInt = Field(
         default=None, alias="EXECUTOR_GROUP_TOPIC_DIGEST"
     )
-    executor_group_topic_logs: int | None = Field(default=None, alias="EXECUTOR_GROUP_TOPIC_LOGS")
+    executor_group_topic_logs: OptionalInt = Field(
+        default=None, alias="EXECUTOR_GROUP_TOPIC_LOGS"
+    )
 
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     log_format: str = Field(default="console", alias="LOG_FORMAT")
-    sentry_dsn: str | None = Field(default=None, alias="SENTRY_DSN")
+    sentry_dsn: OptionalStr = Field(default=None, alias="SENTRY_DSN")

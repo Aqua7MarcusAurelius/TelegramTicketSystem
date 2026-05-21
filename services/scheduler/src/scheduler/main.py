@@ -1,9 +1,14 @@
 """Entrypoint scheduler. SPEC §11.4.
 
-APScheduler с Postgres job store — переживает рестарт. Один job:
-``daily_digest`` — по cron из env ``DIGEST_CRON`` (по умолчанию ``0 9 * * *``)
-публикует :class:`DailyDigestTick` в шину. Подписан core — он соберёт сводку
-и отправит в командную группу.
+В v1 используем in-memory job store — это упрощает развёртывание и не требует
+pickle-ить RedisBroker, который держится в kwargs job-функции. Сам job-объект
+живёт пока живёт scheduler-процесс: при рестарте контейнера он пересоздаётся
+из настроек (cron + tz). Single missed run за рестарт допустим — раз в день
+дайджест, мы переживём.
+
+Один job ``daily_digest`` по cron из env ``DIGEST_CRON`` (default ``0 9 * * *``)
+публикует :class:`DailyDigestTick` в шину. Подписан core — собирает сводку и
+отправляет в командную группу.
 """
 
 from __future__ import annotations
@@ -15,7 +20,6 @@ from typing import cast
 from zoneinfo import ZoneInfo
 
 import structlog
-from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore  # type: ignore[import-untyped]
 from apscheduler.schedulers.asyncio import AsyncIOScheduler  # type: ignore[import-untyped]
 from apscheduler.triggers.cron import CronTrigger  # type: ignore[import-untyped]
 from faststream import FastStream
@@ -30,7 +34,13 @@ log = structlog.get_logger(__name__)
 
 
 def _sync_dsn(async_dsn: str) -> str:
-    """APScheduler ждёт sync-DSN. Меняем драйвер ``+asyncpg`` → ``+psycopg2``."""
+    """APScheduler+SQLAlchemyJobStore ждёт sync-DSN.
+
+    Сейчас не используется — мы перешли на in-memory job store из-за того, что
+    SQLAlchemyJobStore pickle'ит job kwargs, а RedisBroker не pickle-able.
+    Утилита оставлена для будущего переключения (если job-функция станет
+    standalone — например, будет читать redis_url из env сама).
+    """
 
     return re.sub(r"\+asyncpg(?=:|$)", "+psycopg2", async_dsn)
 
@@ -60,10 +70,7 @@ async def run() -> None:
     app = FastStream(broker)
 
     timezone = ZoneInfo(settings.tz)
-    aps = AsyncIOScheduler(
-        jobstores={"default": SQLAlchemyJobStore(url=_sync_dsn(settings.postgres_dsn))},
-        timezone=timezone,
-    )
+    aps = AsyncIOScheduler(timezone=timezone)
 
     # Job регистрируется идемпотентно — APScheduler сам обновит trigger,
     # если cron изменился.

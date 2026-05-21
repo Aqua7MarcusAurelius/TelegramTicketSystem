@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from shared.config import OptionalStr
 
 
 class Settings(BaseSettings):
@@ -21,4 +22,4 @@ class Settings(BaseSettings):
 
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     log_format: str = Field(default="console", alias="LOG_FORMAT")
-    sentry_dsn: str | None = Field(default=None, alias="SENTRY_DSN")
+    sentry_dsn: OptionalStr = Field(default=None, alias="SENTRY_DSN")

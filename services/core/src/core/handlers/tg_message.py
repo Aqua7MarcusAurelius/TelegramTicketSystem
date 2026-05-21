@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import structlog
 from faststream.redis import RedisBroker
+from shared.bus import stream_sub
 from shared.events import CmdDeleteMessage, TgMessage
 from shared.events.dispatch import stream_for
 from shared.events.streams import TG_MESSAGE
@@ -83,7 +84,7 @@ def register(
     session_factory: async_sessionmaker,
     settings: Settings,
 ) -> None:
-    @broker.subscriber(stream=TG_MESSAGE, group="core")
+    @broker.subscriber(stream=stream_sub(TG_MESSAGE, group="core"))
     async def on_tg_message(event: TgMessage) -> None:
         # Ветка 0: сообщение в командной группе от исполнителя — резолвим user_id
         # (SPEC §3.4). Без commit'а будет работать lazy-резолвинг при первом сообщении.

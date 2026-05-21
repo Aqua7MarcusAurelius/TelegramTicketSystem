@@ -29,10 +29,12 @@ def configure_logging(
     log_level = getattr(logging, level.upper(), logging.INFO)
 
     timestamper = structlog.processors.TimeStamper(fmt="iso", utc=True)
+    # PrintLoggerFactory не даёт нам полноценного stdlib-logger'а, поэтому
+    # `structlog.stdlib.add_logger_name` бы упал — имя сервиса всё равно
+    # прицеплено через `.bind(service=...)` ниже.
     shared_processors: list[structlog.typing.Processor] = [
         structlog.contextvars.merge_contextvars,
-        structlog.stdlib.add_log_level,
-        structlog.stdlib.add_logger_name,
+        structlog.processors.add_log_level,
         timestamper,
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,

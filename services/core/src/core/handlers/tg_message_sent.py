@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import structlog
 from faststream.redis import RedisBroker
+from shared.bus import stream_sub
 from shared.events import TgMessageSent
 from shared.events.dispatch import stream_for
 from shared.events.streams import TG_MESSAGE_SENT
@@ -31,7 +32,7 @@ def register(
     broker: RedisBroker,
     session_factory: async_sessionmaker,
 ) -> None:
-    @broker.subscriber(stream=TG_MESSAGE_SENT, group="core")
+    @broker.subscriber(stream=stream_sub(TG_MESSAGE_SENT, group="core"))
     async def on_message_sent(event: TgMessageSent) -> None:
         if event.correlation_id is None:
             return

@@ -87,9 +87,17 @@ def _make_subscribed_broker_and_bot() -> tuple[MagicMock, AsyncMock, dict[str, A
 
     handlers: dict[str, AsyncMock] = {}
 
-    def subscriber(*, stream: str, group: str):
+    def subscriber(*, stream):
+        # FastStream subscriber теперь принимает StreamSub — достанем из него
+        # имя стрима, чтобы тесты могли вызывать handler по строке как раньше.
+        name = (
+            getattr(stream, "channel", None)
+            or getattr(stream, "name", None)
+            or str(stream)
+        )
+
         def deco(fn):
-            handlers[stream] = fn
+            handlers[name] = fn
             return fn
 
         return deco
