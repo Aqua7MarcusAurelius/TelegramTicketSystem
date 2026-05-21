@@ -1,0 +1,34 @@
+# Override-файл для production.
+# Запуск: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# В проде Postgres и Redis обычно managed (Neon/Supabase/RDS, Upstash) — поэтому
+# здесь они не описаны. POSTGRES_DSN и REDIS_URL берутся из .env / секрет-менеджера.
+
+services:
+  gateway-tg:
+    restart: always
+    environment:
+      BOT_USE_WEBHOOK: "true"
+      LOG_FORMAT: json
+    ports:
+      - "127.0.0.1:8080:8080"
+
+  core:
+    restart: always
+    environment:
+      LOG_FORMAT: json
+
+  notifications:
+    restart: always
+    environment:
+      LOG_FORMAT: json
+
+  scheduler:
+    restart: always
+    environment:
+      LOG_FORMAT: json
+
+  sheets-sync:
+    restart: always
+    environment:
+      LOG_FORMAT: json

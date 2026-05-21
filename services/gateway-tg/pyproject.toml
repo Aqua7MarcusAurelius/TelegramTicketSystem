@@ -1,0 +1,23 @@
+[project]
+name = "gateway-tg"
+version = "0.1.0"
+description = "Telegram gateway: bridges Bot API and the Redis Streams bus"
+requires-python = ">=3.12"
+dependencies = [
+    "shared",
+    "aiogram>=3.4",
+    "pydantic-settings>=2.2",
+    "faststream[redis]>=0.5",
+    "structlog>=24.1",
+    "uvloop>=0.19; sys_platform != 'win32'",
+]
+
+[tool.uv.sources]
+shared = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/gateway_tg"]

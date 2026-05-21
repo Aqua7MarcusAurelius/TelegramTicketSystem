@@ -1,0 +1,58 @@
+[project]
+name = "ticket-bot"
+version = "0.1.0"
+description = "Internal ticket bot for Telegram (forum groups + Redis Streams)"
+requires-python = ">=3.12"
+
+[tool.uv.workspace]
+members = ["shared", "services/*"]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.6",
+    "mypy>=1.10",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "respx>=0.21",
+    "types-pyyaml",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["migrations/versions"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "B",    # bugbear
+    "SIM",  # simplify
+    "RUF",  # ruff-specific
+    "ASYNC",
+]
+ignore = [
+    "B008",  # FastAPI/aiogram Depends-style defaults
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/migrations/versions/*.py" = ["E501", "I001"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+exclude = ["migrations/versions"]
+
+[[tool.mypy.overrides]]
+module = ["gspread.*", "apscheduler.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"

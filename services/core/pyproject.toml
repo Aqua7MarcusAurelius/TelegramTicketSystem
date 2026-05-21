@@ -1,0 +1,26 @@
+[project]
+name = "core"
+version = "0.1.0"
+description = "Domain logic: tickets, FSM single-message UI, owners of domain tables"
+requires-python = ">=3.12"
+dependencies = [
+    "shared",
+    "pydantic-settings>=2.2",
+    "faststream[redis]>=0.5",
+    "sqlalchemy[asyncio]>=2.0",
+    "asyncpg>=0.29",
+    "alembic>=1.13",
+    "redis>=5.0",
+    "pyyaml>=6.0",
+    "structlog>=24.1",
+]
+
+[tool.uv.sources]
+shared = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/core"]

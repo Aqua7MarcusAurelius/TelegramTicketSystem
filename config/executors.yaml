@@ -1,0 +1,24 @@
+# Список исполнителей. См. SPEC §3.4.
+#
+# Поля:
+#   username   — Telegram @username без @. Обязательно.
+#   full_name  — отображаемое имя в кнопках и шапках. Обязательно.
+#   is_lead    — true для тимлида (флаг на будущее, прав в v1 не даёт). Опционально.
+#
+# Workflow:
+#   - Добавили человека? Допиши запись, попроси нового исполнителя написать
+#     ЛЮБОЕ сообщение в командную группу (для резолва telegram_user_id),
+#     потом `docker compose restart core` или `/reload_executors` (см. §3.7).
+#   - Убрали человека? Удали запись и перезапусти core — в БД он останется
+#     с is_active=false для целостности FK на старых тикетах.
+
+executors:
+  - username: ivan_petrov
+    full_name: Иван Петров
+    is_lead: true
+
+  - username: maria_s
+    full_name: Мария Сидорова
+
+  - username: petr_k
+    full_name: Пётр Кузнецов
